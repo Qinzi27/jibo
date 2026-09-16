@@ -1,0 +1,29 @@
+# Local data and private signing material
+.local-signing/
+*.keystore
+*.jks
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
+*.idsig
+
+# Generated intermediates and local dependencies
+build/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+playwright-report/
+test-results/
+dist/ANDROID_BUILD_INFO.txt
+
+# Assistant instructions and local working material
+AGENTS.md
+SKILL.md
+skills/
+.agents/
+.codex/
+docs/
+*.zip
