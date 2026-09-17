@@ -2,11 +2,15 @@ package app.leancrew.local;
 
 import android.app.Activity;
 import android.content.ClipData;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.ResolveInfo;
 import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
@@ -24,6 +28,8 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -254,6 +260,7 @@ public final class UpdateManager {
                 awaitingPermission = true;
                 preferences.edit().putBoolean("awaitingPermission", true).commit();
                 Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + app.getPackageName()));
+                restrictToSystemHandler(settings);
                 activity.startActivityForResult(settings, REQUEST_PERMISSION);
             } else {
                 awaitingPermission = false;
@@ -263,15 +270,37 @@ public final class UpdateManager {
                 install.setClipData(ClipData.newRawUri("肌薄更新", UpdateFileProvider.APK_URI));
                 install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 install.putExtra(Intent.EXTRA_RETURN_RESULT, true);
+                restrictToSystemHandler(install);
                 installerOpen = true;
                 activity.startActivityForResult(install, REQUEST_INSTALL);
             }
             status = "installing"; publish();
         } catch (Exception failure) {
             installerOpen = false; awaitingPermission = false;
+            app.revokeUriPermission(UpdateFileProvider.APK_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION);
             preferences.edit().putBoolean("awaitingPermission", false).apply();
             status = "ready"; error = "无法打开系统安装器，请确认手机允许安装此应用的更新后重试。"; publish();
         }
+    }
+
+    private void restrictToSystemHandler(Intent intent) throws IOException {
+        PackageManager manager = app.getPackageManager();
+        int flags = PackageManager.MATCH_DEFAULT_ONLY | PackageManager.MATCH_SYSTEM_ONLY;
+        List<UpdatePolicy.SystemHandler> candidates = new ArrayList<>();
+        for (ResolveInfo match : manager.queryIntentActivities(intent, flags)) {
+            ActivityInfo activity = match == null ? null : match.activityInfo;
+            if (activity == null || activity.applicationInfo == null) continue;
+            ApplicationInfo application = activity.applicationInfo;
+            candidates.add(new UpdatePolicy.SystemHandler(activity.packageName, activity.name,
+                    (application.flags & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0,
+                    activity.enabled && application.enabled, activity.exported));
+        }
+        ResolveInfo resolved = manager.resolveActivity(intent, flags);
+        ActivityInfo preferred = resolved == null ? null : resolved.activityInfo;
+        UpdatePolicy.SystemHandler selected = UpdatePolicy.selectSystemHandler(candidates,
+                preferred == null ? null : preferred.packageName, preferred == null ? null : preferred.name);
+        if (selected == null) throw new IOException("未找到可用的系统安装组件");
+        intent.setComponent(new ComponentName(selected.packageName, selected.activityName));
     }
     private synchronized void continuePermissionIfPossible() {
         Activity activity = foreground.get();
@@ -302,6 +331,7 @@ public final class UpdateManager {
 
     private synchronized void clearDownloaded() {
         ready = false; progress = 0; awaitingPermission = false;
+        app.revokeUriPermission(UpdateFileProvider.APK_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         UpdateFileProvider.apkFile(app).delete();
         preferences.edit().remove("verifiedRelease").putBoolean("awaitingPermission", false).apply();
     }

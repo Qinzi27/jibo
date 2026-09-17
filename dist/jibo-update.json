@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.leancrew.local",
-  "versionName": "1.5.0",
-  "versionCode": 7,
+  "versionName": "1.5.1",
+  "versionCode": 8,
   "minSdk": 26,
-  "apkUrl": "https://github.com/Qinzi27/jibo/releases/download/v1.5.0/jibo-v1.5.0.apk",
-  "sha256": "00711e317ea11088803db058cd9406fb890f6f81da97ef692c3033206d660b52",
-  "size": 3191393,
-  "notes": "新增应用内检查更新、下载校验和系统确认安装；训练记录与照片仍保存在本机。"
+  "apkUrl": "https://github.com/Qinzi27/jibo/releases/download/v1.5.1/jibo-v1.5.1.apk",
+  "sha256": "46da6c48e8c2200fa07994eead9e9881662701a9831b243832f60fd239c32c35",
+  "size": 3195489,
+  "notes": "安全加固：阻止恶意备份保存地址覆盖本地文件；加强多窗口记录与损坏数据保护；及时清理拍照临时原图；更新只调用系统安装器。照片、计划与记录仍全部保存在本机。"
 }

@@ -25,6 +25,7 @@ parser.add_argument('--mobile-only', action='store_true', help='Only test phone 
 parser.add_argument('--custom-only', action='store_true', help='Only test custom movement photos and reusable plans; file input is automated, not a real camera or Android picker')
 parser.add_argument('--theory-only', action='store_true', help='Only test merged plans/progress navigation and local theory screenshot browsing; clipboard is intercepted, no external source page opens')
 parser.add_argument('--updates-only', action='store_true', help='Only test update UI with a mocked native bridge; no APK network request or Android installer is exercised')
+parser.add_argument('--security-only', action='store_true', help='Test source web/ security boundaries and real multi-window localStorage; native photo cleanup is mocked')
 args = parser.parse_args()
 if not args.node:
     parser.error('Node.js is required; install it on PATH or pass --node PATH')
@@ -39,7 +40,8 @@ env = os.environ.copy()
 env.update(JIBO_ROOT=str(ROOT), JIBO_OUTPUT=str(args.output_dir.resolve()),
            JIBO_BASELINE='1' if args.baseline else '0', JIBO_PWA_ONLY='1' if args.pwa_only else '0',
            JIBO_MOBILE_ONLY='1' if args.mobile_only else '0', JIBO_CUSTOM_ONLY='1' if args.custom_only else '0',
-           JIBO_THEORY_ONLY='1' if args.theory_only else '0', JIBO_UPDATES_ONLY='1' if args.updates_only else '0')
+           JIBO_THEORY_ONLY='1' if args.theory_only else '0', JIBO_UPDATES_ONLY='1' if args.updates_only else '0',
+           JIBO_SECURITY_ONLY='1' if args.security_only else '0')
 if args.node_modules:
     env['NODE_PATH'] = args.node_modules
 if args.chromium:
@@ -53,8 +55,9 @@ const assert = require('node:assert/strict');
 const {chromium} = require('playwright');
 const root=process.env.JIBO_ROOT, output=process.env.JIBO_OUTPUT;
 const baseline=process.env.JIBO_BASELINE==='1', pwaOnly=process.env.JIBO_PWA_ONLY==='1', mobileOnly=process.env.JIBO_MOBILE_ONLY==='1', customOnly=process.env.JIBO_CUSTOM_ONLY==='1', theoryOnly=process.env.JIBO_THEORY_ONLY==='1', updatesOnly=process.env.JIBO_UPDATES_ONLY==='1';
+const securityOnly=process.env.JIBO_SECURITY_ONLY==='1';
 const store='lean-crew-local-v1';
-const checks=[], errors=[], external=[];
+const checks=[], errors=[], external=[], blockedExternal=[], externalResponses=[];
 let context, server;
 function check(name, condition) { assert.ok(condition,name);checks.push(name);console.log('PASS:',name); }
 const state=p=>p.evaluate(k=>JSON.parse(localStorage.getItem(k) || JSON.stringify(LeanCore.emptyState())),store);
@@ -67,15 +70,15 @@ const nav=async(p,name)=>{
   if(name==='plans'||name==='progress')await click(p,'plan-view',`[data-view="${name}"]`);
 };
 const close=async p=>{if(await p.locator('#modal').isVisible())await click(p,'close-modal');};
-function hook(p) {p.on('pageerror',e=>errors.push(String(e)));p.on('request',r=>{if(!r.url().startsWith(origin)&&!r.url().startsWith('data:')&&!r.url().startsWith('blob:'))external.push(r.url());});}
+function hook(p) {p.on('pageerror',e=>errors.push(String(e)));p.on('request',r=>{if(!r.url().startsWith(origin)&&!r.url().startsWith('data:')&&!r.url().startsWith('blob:'))external.push(r.url());});p.on('requestfailed',r=>{if(r.url().startsWith('https://example.invalid/'))blockedExternal.push({url:r.url(),error:r.failure()?.errorText})});p.on('response',r=>{if(r.url().startsWith('https://example.invalid/'))externalResponses.push(r.url())});}
 let origin;
 async function load(initial=null,width=390){
-  const p=await context.newPage();hook(p);await p.setViewportSize({width,height:844});await p.goto(origin+'/dist/lean-crew-offline.html');
+  const p=await context.newPage();if(securityOnly)await p.addInitScript(()=>{window.__holdStorageEvent=false;window.addEventListener('storage',e=>{if(window.__holdStorageEvent)e.stopImmediatePropagation()})});hook(p);await p.setViewportSize({width,height:844});await p.goto(origin+(securityOnly?'/web/index.html':'/dist/lean-crew-offline.html'));
   await p.evaluate(({initial,store})=>{localStorage.clear();if(initial!==null)localStorage.setItem(store,initial)},{initial,store});await p.reload();return p;
 }
 async function downloads(p){await p.evaluate(()=>{window.__testDownloads=[];const create=URL.createObjectURL.bind(URL);URL.createObjectURL=blob=>{window.__testDownloads.push(blob);return create(blob)};HTMLAnchorElement.prototype.click=function(){};});}
 async function launch(){context=await chromium.launchPersistentContext(path.join(output,'browser-profile'),{
-  headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,viewport:{width:390,height:844},args:['--no-sandbox']
+  headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,viewport:{width:390,height:844},args:['--no-sandbox'],serviceWorkers:securityOnly?'block':'allow'
 });}
 async function main(){
   const servedRoot=pwaOnly?path.join(root,'web'):root;
@@ -90,6 +93,7 @@ async function main(){
   if(customOnly){await customChecks();return;}
   if(theoryOnly){await theoryChecks();return;}
   if(updatesOnly){await updateChecks();return;}
+  if(securityOnly){await securityChecks();return;}
   let p=await load();
   check('clean install contains no invented training records',(await state(p)).sessions.length===0);
   check('mobile home has no horizontal overflow',await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -158,6 +162,82 @@ async function main(){
     if(!baseline){await nav(p,'plans');await click(p,'plan-detail','[data-plan="gym-a"]');check(`${width}px plan detail stays within viewport`,await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));await click(p,'start-plan','[data-plan="gym-a"]');check(`${width}px active workout has no horizontal overflow`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await click(p,'discard-draft');await click(p,'confirm');}if(width===1280){await nav(p,'home');await p.screenshot({path:path.join(output,'home-desktop.png')});}await p.close();
   }
   check('no unhandled JavaScript exceptions',errors.length===0);check('application makes no external runtime requests',external.length===0);
+}
+async function securityChecks(){
+  let p=await load();
+  const fixture=await p.evaluate(()=>{
+    const s=LeanCore.emptyState(),e=LeanCore.newCustomExercise({name:'动作<img src=x onerror=alert(1)>',group:'背部',mode:'weight',hint:'<svg onload=alert(1)> & 学习笔记'});
+    s.customExercises.push(e);s.customPlans.push(LeanCore.newCustomPlan({name:'计划<script>alert(1)</script>',blocks:[{exerciseId:e.id,sets:1,target:'8 次',restSeconds:60}]}));
+    s.draft=LeanCore.newPlanDraft(s.customPlans[0]);s.draft.id='session"><img src=x>';
+    s.draft.blocks[0].id='block"><img src=x>';s.draft.blocks[0].sets[0].id='set"><img src=x>';
+    Object.assign(s.draft.blocks[0].sets[0],{weight:12.5,reps:8,done:true});
+    s.draft.blocks[0].note='=HYPERLINK("https://example.invalid","private")';
+    s.profile.nickname='<img src=x onerror=alert(1)>';
+    return LeanCore.archive(s,LEAN_EXERCISES).state;
+  });
+  await p.close();
+  const raw=JSON.stringify(fixture).replace('"profile":{','"__proto__":{"jiboPolluted":true},"profile":{"constructor":{"prototype":{"jiboPolluted":true}},');
+  p=await load(raw);
+  check('prototype-shaped import metadata never changes Object.prototype',await p.evaluate(()=>({}).jiboPolluted===undefined));
+  await nav(p,'library');check('custom movement HTML is displayed literally',await p.locator('.exercise-card h3').filter({hasText:fixture.customExercises[0].name}).count()===1&&await p.locator('img[src="x"]').count()===0);
+  await nav(p,'progress');await click(p,'history');check('imported identifiers and formula-like notes remain text',await p.locator('img[src="x"]').count()===0&&await p.locator('#modal').innerText().then(t=>t.includes('=HYPERLINK')));await close(p);
+  await click(p,'settings');await downloads(p);await click(p,'export-json');const clean=await p.evaluate(async()=>JSON.parse(await window.__testDownloads[0].text()));
+  check('validated backup preserves every model field and drops only unknown metadata',JSON.stringify(clean)===JSON.stringify(fixture));
+  await click(p,'export-csv');check('CSV formula-like imported notes are neutralized',await p.evaluate(async()=>await window.__testDownloads[1].text()).then(t=>t.includes('"\'=HYPERLINK')));
+  const baselineRaw=await saved(p),remote=structuredClone(fixture);remote.customExercises[0].image='https://example.invalid/private-photo.jpg';
+  await p.locator('#import-file').setInputFiles({name:'remote-photo.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(remote))});await p.waitForTimeout(100);
+  check('remote-image backup is refused without replacing personal records',await saved(p)===baselineRaw&&await p.locator('#modal').isHidden());
+  await p.locator('#import-file').setInputFiles({name:'oversized.json',mimeType:'application/json',buffer:Buffer.alloc(4*1024*1024+1,32)});await p.waitForTimeout(100);
+  check('oversized backup is refused before replacement',await saved(p)===baselineRaw&&await p.locator('#modal').isHidden());
+  await p.evaluate(()=>{
+    window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.effectiveDirective));
+    const script=document.createElement('script');script.textContent='window.__injectedCodeRan=true';document.body.append(script);
+    const img=new Image();img.src='https://example.invalid/blocked-image.jpg';document.body.append(img);
+  });await p.waitForTimeout(150);
+  check('CSP blocks injected inline script execution',await p.evaluate(()=>!window.__injectedCodeRan&&window.__csp.includes('script-src-elem')));
+  check('CSP blocks outbound image requests',await p.evaluate(()=>window.__csp.includes('img-src')));
+  const other=await context.newPage();hook(other);await other.goto(origin+'/web/index.html');
+  await other.evaluate(k=>localStorage.setItem(k,'{unreadable-current-data'),store);await p.locator('.storage-error').waitFor();
+  await click(p,'theme','[data-theme="blond"]');
+  check('malformed data arriving from another real window enables write protection',await saved(p)==='{unreadable-current-data');
+  await click(p,'export-raw');check('malformed cross-window original bytes remain exportable',await p.evaluate(async()=>await window.__testDownloads.at(-1).text())==='{unreadable-current-data');
+  const repaired=structuredClone(fixture);repaired.profile.nickname='另一窗口的新记录';
+  await other.evaluate(({store,s})=>localStorage.setItem(store,JSON.stringify(s)),{store,s:repaired});await p.locator('.storage-error').waitFor({state:'detached'});
+  check('valid cross-window recovery exits protection without losing data',await p.locator('#nickname').inputValue()===repaired.profile.nickname&&JSON.stringify(await state(p))===JSON.stringify(repaired));
+  await other.evaluate(()=>localStorage.clear());await p.waitForFunction(()=>document.querySelector('#nickname')?.value==='训练者');
+  await click(p,'theme','[data-theme="blond"]');
+  check('cross-window clear event cannot resurrect old photos or archived sessions',(await state(p)).customExercises.length===0&&(await state(p)).sessions.length===0);
+  await p.evaluate(()=>window.__holdStorageEvent=true);
+  const changed=structuredClone(fixture);changed.profile.nickname='尚未处理的外部变更';changed.profile.theme='lean';
+  await other.evaluate(({store,s})=>localStorage.setItem(store,JSON.stringify(s)),{store,s:changed});await p.waitForTimeout(50);
+  await click(p,'theme','[data-theme="blond"]');
+  check('save rechecks persisted snapshot even before another window event is handled',JSON.stringify(await state(p))===JSON.stringify(changed)&&await p.locator('#nickname').inputValue()===changed.profile.nickname);
+  await p.evaluate(()=>window.__holdStorageEvent=false);
+  await p.evaluate(()=>{const original=File.prototype.text;File.prototype.text=function(){return new Promise(resolve=>setTimeout(()=>original.call(this).then(resolve),250))}});
+  const payload={name:'pending.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fixture))};
+  await p.locator('#import-file').setInputFiles(payload);await nav(p,'theory');await p.waitForTimeout(400);
+  check('navigating away cancels a delayed import without a late replacement dialog',await p.locator('#modal').isHidden()&&JSON.stringify(await state(p))===JSON.stringify(changed));
+  await click(p,'settings');await p.locator('#import-file').setInputFiles(payload);
+  changed.profile.nickname='读取期间新增的数据';await other.evaluate(({store,s})=>localStorage.setItem(store,JSON.stringify(s)),{store,s:changed});await p.waitForTimeout(400);
+  check('another window write invalidates an in-flight backup read',await p.locator('#modal').isHidden()&&JSON.stringify(await state(p))===JSON.stringify(changed));
+  await other.close();await p.close();
+  for(const bad of ['null','']){
+    p=await load(bad);check('non-schema stored '+JSON.stringify(bad)+' is protected rather than treated as a clean install',await p.locator('.storage-error').count()===1);
+    await click(p,'settings');await click(p,'theme','[data-theme="blond"]');check('protected '+JSON.stringify(bad)+' cannot be silently overwritten',await saved(p)===bad);await p.close();
+  }
+  p=await load();await nav(p,'library');await click(p,'new-custom-exercise');
+  await p.evaluate(()=>{window.__releasedPhotos=[];window.LeanNative={releasePhotoSelection:name=>window.__releasedPhotos.push(name)}});
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6XmAAAAAASUVORK5CYII=','base64');
+  await p.locator('#exercise-gallery').setInputFiles({name:'capture-success.png',mimeType:'image/png',buffer:png});await p.locator('#photo-status').filter({hasText:'照片已就绪'}).waitFor();
+  check('successful photo processing releases only that native temporary filename',JSON.stringify(await p.evaluate(()=>window.__releasedPhotos))==='["capture-success.png"]');
+  await p.locator('#exercise-gallery').setInputFiles({name:'capture-failed.png',mimeType:'image/png',buffer:Buffer.from('invalid raster')});await p.waitForFunction(()=>window.__releasedPhotos.includes('capture-failed.png'));
+  check('failed photo decoding also releases native temporary capture',await p.locator('#photo-status').innerText().then(t=>t.includes('无法读取')));
+  await p.evaluate(()=>{const original=Image.prototype.decode;Image.prototype.decode=function(){return new Promise((resolve,reject)=>setTimeout(()=>original.call(this).then(resolve,reject),250))}});
+  await p.locator('#exercise-gallery').setInputFiles({name:'capture-cancelled.png',mimeType:'image/png',buffer:png});await close(p);await p.waitForFunction(()=>window.__releasedPhotos.includes('capture-cancelled.png'));
+  check('closing the editor releases a late native capture without adding personal data',await p.locator('#modal').isHidden()&&(await state(p)).customExercises.length===0);
+  await p.close();
+  check('security paths produce no unhandled JavaScript errors',errors.length===0);
+  check('only intentional external probe is attempted and CSP blocks it without a network response',external.length===1&&external[0]==='https://example.invalid/blocked-image.jpg'&&blockedExternal.some(r=>r.url===external[0]&&['csp','net::ERR_BLOCKED_BY_CSP'].includes(r.error))&&externalResponses.length===0);
 }
 async function planProgressChecks(){
   let p=await load(null,390);
@@ -608,7 +688,7 @@ async function plans(p){
 }
 (async()=>{let failure;try{await main()}catch(e){failure=String(e.stack||e);console.error(failure);process.exitCode=1;if(context){const page=context.pages().at(-1);if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});console.error('OVERFLOW:',await page.evaluate(()=>[...document.querySelectorAll('body *')].map(e=>({tag:e.tagName,cls:e.className,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width})).filter(e=>e.right>innerWidth+1||e.left< -1)).catch(()=>[]));}}}finally{
   if(context)await context.close().catch(()=>{});if(server)await new Promise(resolve=>server.close(resolve));
-  const report={mode:updatesOnly?'Chrome update UI with a mocked native bridge; localStorage remains real; no real network updater, package verification or Android installer':pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':theoryOnly?'Chrome merged plan/progress and local theory screenshot flow; actual localStorage; offline rendering and enlargement; intercepted clipboard, no external navigation':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,failure:failure||null,not_verified:['Android compilation/signing/device install','Real GitHub updater network, APK validation and Android installer','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','Native or OS clipboard', 'file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
+  const report={mode:securityOnly?'Chrome source web/ with real multi-window localStorage; isolated browser profile, CSP/import adversarial fixtures; native photo cleanup bridge mocked':updatesOnly?'Chrome update UI with a mocked native bridge; localStorage remains real; no real network updater, package verification or Android installer':pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':theoryOnly?'Chrome merged plan/progress and local theory screenshot flow; actual localStorage; offline rendering and enlargement; intercepted clipboard, no external navigation':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,blocked_external_requests:blockedExternal,external_responses:externalResponses,failure:failure||null,not_verified:['Android compilation/signing/device install','Real GitHub updater network, APK validation and Android installer','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','Native or OS clipboard', 'file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:checks.length,output,failure:failure||null}));
 }})();
 '''

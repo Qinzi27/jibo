@@ -6,7 +6,7 @@
   let EX = BASE_EX, PLANS = BASE_PLANS, EX_MAP = new Map(EX.map(e=>[e.id,e]));
   function refreshCatalog() { EX=C.allExercises(state,BASE_EX);PLANS=C.allPlans(state,BASE_PLANS);EX_MAP=new Map(EX.map(e=>[e.id,e])); }
   const STORE = 'lean-crew-local-v1';
-  const APP_VERSION = '1.5.0', RELEASES_URL = 'https://github.com/Qinzi27/jibo/releases';
+  const APP_VERSION = '1.5.1', RELEASES_URL = 'https://github.com/Qinzi27/jibo/releases';
   const $ = (selector, root = document) => root.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = (n, p = 1) => C.round(n, p).toLocaleString('zh-CN', {maximumFractionDigits:p});
@@ -44,6 +44,7 @@
   let bootError = '';
   let damagedRaw = '';
   let storageBlocked = false;
+  let storageSnapshot = null;
   let planLocation = 'gym', planView = 'plans';
   let tab = 'home', group = '全部', search = '', foodDate = today();
   let toastTimer, timerInterval, timerEnd = 0, returnFocus = null;
@@ -55,7 +56,8 @@
 
   function readStorage() {
     const raw = isNative() ? window.LeanNative.read() : localStorage.getItem(STORE);
-    if (raw && raw !== 'null') state = C.parseBackup(raw, BASE_EX);
+    storageSnapshot = raw;
+    if (raw !== null && (raw !== '' || !isNative())) state = C.parseBackup(raw, BASE_EX);
     return raw;
   }
   try { readStorage(); }
@@ -122,6 +124,16 @@
   window.addEventListener('pagehide',rememberScroll);
 
   function commit(next, allowReset = false) {
+    // A storage event can still be queued when a user clicks Save in another
+    // window. Check the actual persisted value before replacing our snapshot.
+    // This is a conflict guard, not a cross-process localStorage transaction.
+    if (!isNative()) {
+      const current = localStorage.getItem(STORE);
+      if (current !== storageSnapshot) {
+        syncBrowserStorage(current);
+        throw new Error(storageBlocked ? '本地数据已变为无法读取，已暂停写入。请先导出原始数据。' : '已读取另一个窗口的新记录，本次修改未写入。请核对后重试。');
+      }
+    }
     if (storageBlocked && !allowReset) throw new Error('当前存储处于保护状态。请到设置导出原始数据并处理。');
     const checked = C.validateState(next, BASE_EX);
     const json = JSON.stringify(checked);
@@ -133,6 +145,7 @@
       try { localStorage.setItem(STORE, json); }
       catch (_) { throw new Error('浏览器无法保存记录。请避免隐私模式或存储已满，并导出备份。'); }
     }
+    storageSnapshot = json;
     const oldDraft=state.draft?.id;
     state = checked;
     if(oldDraft!==state.draft?.id){runtime.workoutScroll=0;stopTimer();}
@@ -155,7 +168,7 @@
   }
   function notePrefix(session) { const id=C.sessionPlanId(session); return id?'[肌薄计划:'+id+']\n':''; }
   function visibleNote(session) { return session.note.slice(notePrefix(session).length); }
-  function footer() { return '<footer class="footer"><span>LOCAL FIRST. ZERO ACCOUNT.</span><span>肌薄 · 把训练练成日常 · v1.5.0</span></footer>'; }
+  function footer() { return '<footer class="footer"><span>LOCAL FIRST. ZERO ACCOUNT.</span><span>肌薄 · 把训练练成日常 · v1.5.1</span></footer>'; }
   function nav(mobile = false) {
     return `<nav class="${mobile ? 'mobile-nav' : 'desktop-nav'}" aria-label="${mobile ? '底部导航' : '主导航'}">${[['home','dumbbell','训练'],['plans','calendar','计划'],['library','book','动作'],['theory','bolt','肌薄理论'],['food','food','饮食']].map(([id,ic,name]) => `<button type="button" class="nav-item ${tab===id?'active':''}" data-nav="${id}" aria-current="${tab===id?'page':'false'}">${icon(ic)}<span>${name}</span></button>`).join('')}</nav>`;
   }
@@ -329,7 +342,14 @@
       $('#custom-photo-preview').innerHTML=`<img src="${esc(result)}" alt="动作照片预览"><button type="button" class="icon-btn" data-action="remove-exercise-photo" aria-label="移除这张照片">${icon('x')}</button>`;
       $('#photo-status').textContent='照片已就绪，点击「保存动作」留在本机。';
     }catch(error){if(ticket===photoTicket){toast(error.message);if($('#photo-status'))$('#photo-status').textContent=error.message;}}
-    finally{if(ticket===photoTicket){photoBusy=false;if($('#save-custom-exercise'))$('#save-custom-exercise').disabled=false;}}
+    finally{
+      // The native provider exposes a per-capture random filename. Release
+      // only this selection so a late decoder cannot delete a newer photo.
+      if(isNative()&&typeof window.LeanNative.releasePhotoSelection==='function'){
+        try{window.LeanNative.releasePhotoSelection(file.name);}catch(_){}
+      }
+      if(ticket===photoTicket){photoBusy=false;if($('#save-custom-exercise'))$('#save-custom-exercise').disabled=false;}
+    }
   }
   function saveCustomExercise() {
     if(photoBusy)throw new Error('照片还在处理，请稍等。');
@@ -563,7 +583,7 @@
     const progress=$('#update-progress');if(progress){progress.value=updateState.progress;$('#update-progress-label').textContent=updateState.progress+'%';$('#update-status-message').textContent=updateState.progress>=100?'下载完成，正在校验安装包……':'正在下载安装包，训练记录仍保存在本机。';}
   }
   function settingsPage() {
-    return `${pageHead('MAKE IT YOURS','设置与备份。','按喜欢的方式记录，保管自己的训练数据。')}<div class="wide-content stack">${softwareUpdateCard()}<section class="panel"><form id="profile-form"><label class="field">你的昵称<input id="nickname" maxlength="30" value="${esc(state.profile.nickname)}" placeholder="训练者"></label><button class="btn btn-secondary btn-small" type="submit" style="margin-top:12px">保存昵称</button></form><div class="settings-line"><div><strong>每日鼓励 / Daily note</strong><p>在首页显示一句轻松的训练鼓励。</p></div><button class="toggle ${state.profile.fun?'on':''}" role="switch" aria-checked="${state.profile.fun}" aria-label="每日鼓励" data-action="toggle-fun"></button></div><div style="margin-top:16px"><strong class="small">主题 / Theme</strong><div class="theme-picker"><button class="theme-option ${state.profile.theme==='lean'?'active':''}" data-action="theme" data-theme="lean">🟢 薄肌绿</button><button class="theme-option ${state.profile.theme==='blond'?'active':''}" data-action="theme" data-theme="blond">🟡 暖阳金</button></div></div></section><section class="panel"><div class="panel-title"><h3>本地数据与备份</h3>${icon('lock')}</div><p class="notice">${isNative()?'动作图片、计划和训练记录保存在这台手机的应用私有空间；仅软件更新会联网，已关闭自动云备份。照片、计划和记录不会上传。选图只读取你选择的图片，保存压缩副本，不改动相册原图。':'网页版写入当前浏览器的本地存储。移动 HTML 文件、换浏览器、隐私模式或清理站点数据，都可能使记录不可见或丢失。'}<br>卸载或清理应用前，请先导出 JSON。完整 JSON 包含动作图片、计划与记录，请保存在本机并自行保管。</p><div class="row wrap" style="margin-top:17px"><button class="btn btn-primary" data-action="export-json">${icon('download')}完整 JSON 备份</button><button class="btn btn-secondary" data-action="export-csv">训练 CSV</button><button class="btn btn-ghost" data-action="import-json">${icon('upload')}导入 JSON</button></div>${damagedRaw?'<button class="btn btn-danger btn-wide" style="margin-top:12px" data-action="export-raw">先导出未解析的原始数据</button>':''}<input id="import-file" class="file-input" type="file" accept="application/json,.json" aria-label="选择 JSON 备份"><p class="footnote">导入前会验证格式并显示确认；确认后整体替换，不是合并。建议先导出当前数据。JSON 包含自建动作、照片和计划；CSV 仅含已归档训练，不能用于完整恢复。</p><div class="danger-zone"><button class="btn btn-danger btn-small" data-action="reset">清空所有本地记录</button><p class="footnote">包括自建动作照片和自己的计划，清空前请先备份。</p></div></section><section class="panel"><h3>这个项目是什么？</h3><div class="settings-line"><div><strong>肌薄 · JIBO</strong><p>v1.5.0 · 本地优先 · 没有账号、广告、追踪或自动上传。</p></div></div><div class="settings-line"><div><strong>围绕薄肌，均衡训练</strong><p>健身房和居家 A / B / C 计划，兼顾全身力量、肩背与核心，按自己的节奏记录进步。</p></div></div><div class="settings-line"><div><strong>图示与许可</strong><p>${EX.length} 张动作图是示意性质，不是专业动作教学。代码与原创动作示意图采用 MIT 许可；原帖、漫画及人物参考图标另见素材说明。</p></div></div><div class="settings-line"><div><strong>边界</strong><p>内置计划是一般模板，自建内容由你整理；不提供医疗诊断或体型预测。计时器不会在退出 App 后发送系统通知。</p></div></div><button class="btn btn-ghost btn-small" style="margin-top:16px" data-action="formulas">${icon('info')}计算口径</button></section></div>`;
+    return `${pageHead('MAKE IT YOURS','设置与备份。','按喜欢的方式记录，保管自己的训练数据。')}<div class="wide-content stack">${softwareUpdateCard()}<section class="panel"><form id="profile-form"><label class="field">你的昵称<input id="nickname" maxlength="30" value="${esc(state.profile.nickname)}" placeholder="训练者"></label><button class="btn btn-secondary btn-small" type="submit" style="margin-top:12px">保存昵称</button></form><div class="settings-line"><div><strong>每日鼓励 / Daily note</strong><p>在首页显示一句轻松的训练鼓励。</p></div><button class="toggle ${state.profile.fun?'on':''}" role="switch" aria-checked="${state.profile.fun}" aria-label="每日鼓励" data-action="toggle-fun"></button></div><div style="margin-top:16px"><strong class="small">主题 / Theme</strong><div class="theme-picker"><button class="theme-option ${state.profile.theme==='lean'?'active':''}" data-action="theme" data-theme="lean">🟢 薄肌绿</button><button class="theme-option ${state.profile.theme==='blond'?'active':''}" data-action="theme" data-theme="blond">🟡 暖阳金</button></div></div></section><section class="panel"><div class="panel-title"><h3>本地数据与备份</h3>${icon('lock')}</div><p class="notice">${isNative()?'动作图片、计划和训练记录保存在这台手机的应用私有空间；仅软件更新会联网，已关闭自动云备份。照片、计划和记录不会上传。选图只读取你选择的图片，保存压缩副本，不改动相册原图。':'网页版写入当前浏览器的本地存储。移动 HTML 文件、换浏览器、隐私模式或清理站点数据，都可能使记录不可见或丢失。'}<br>卸载或清理应用前，请先导出 JSON。完整 JSON 包含动作图片、计划与记录，请保存在本机并自行保管。</p><div class="row wrap" style="margin-top:17px"><button class="btn btn-primary" data-action="export-json">${icon('download')}完整 JSON 备份</button><button class="btn btn-secondary" data-action="export-csv">训练 CSV</button><button class="btn btn-ghost" data-action="import-json">${icon('upload')}导入 JSON</button></div>${damagedRaw?'<button class="btn btn-danger btn-wide" style="margin-top:12px" data-action="export-raw">先导出未解析的原始数据</button>':''}<input id="import-file" class="file-input" type="file" accept="application/json,.json" aria-label="选择 JSON 备份"><p class="footnote">导入前会验证格式并显示确认；确认后整体替换，不是合并。建议先导出当前数据。JSON 包含自建动作、照片和计划；CSV 仅含已归档训练，不能用于完整恢复。</p><div class="danger-zone"><button class="btn btn-danger btn-small" data-action="reset">清空所有本地记录</button><p class="footnote">包括自建动作照片和自己的计划，清空前请先备份。</p></div></section><section class="panel"><h3>这个项目是什么？</h3><div class="settings-line"><div><strong>肌薄 · JIBO</strong><p>v1.5.1 · 本地优先 · 没有账号、广告、追踪或自动上传。</p></div></div><div class="settings-line"><div><strong>围绕薄肌，均衡训练</strong><p>健身房和居家 A / B / C 计划，兼顾全身力量、肩背与核心，按自己的节奏记录进步。</p></div></div><div class="settings-line"><div><strong>图示与许可</strong><p>${EX.length} 张动作图是示意性质，不是专业动作教学。代码与原创动作示意图采用 MIT 许可；原帖、漫画及人物参考图标另见素材说明。</p></div></div><div class="settings-line"><div><strong>边界</strong><p>内置计划是一般模板，自建内容由你整理；不提供医疗诊断或体型预测。计时器不会在退出 App 后发送系统通知。</p></div></div><button class="btn btn-ghost btn-small" style="margin-top:16px" data-action="formulas">${icon('info')}计算口径</button></section></div>`;
   }
   function formulas() {
     modal('<div class="eyebrow">TRANSPARENT CALCULATIONS</div><h2>每个数，讲清楚。</h2>',`<h3>1. 负重次数 / Load × reps</h3><div class="formula" style="margin:12px 0">20 kg × 12 次 = 240 kg·次\n20 kg × 12 次 = 240 kg·次\n20 kg × 10 次 = 200 kg·次\n总和 = 240 + 240 + 200 = 680 kg·次</div><p class="small muted">只计有效且勾选“完成”的组。空白不是零；重量填 0 是明确的 0。自重动作不估算负重，计时项目另算秒数。不同动作或器械不应仅凭这个总和判断效果。</p><div class="divider"></div><h3>2. 标签营养 / Label arithmetic</h3><div class="formula" style="margin:12px 0">假设标签每100 mL：62 kcal、蛋白质3.4 g\n记录250 mL：份数 = 250 ÷ 100 = 2.5\n能量 = 2.5 × 62 = 155 kcal\n蛋白质 = 2.5 × 3.4 = 8.5 g\nkJ ÷ 4.184 = kcal</div><p class="small muted">这是示例，不是某产品的真实标签。内部保留未四舍五入数值，显示时再处理小数；展示值可能有末位差异。</p><div class="divider"></div><h3>3. 本周训练天数</h3><p class="small muted" style="margin-top:10px">从本地时间周一到今天，至少有一组有效完成且已归档的日期，计为一个训练日。同一天多次训练只计一天；草稿和未来记录不计入。每周 3 天只是参考节奏。</p>`);
@@ -578,6 +598,7 @@
   }
   function closeModal() {
     theoryGallery=null;
+    importTicket++;loadingImport=false;
     photoTicket++;photoBusy=false;
     $('#modal').hidden=true;$('#modal').innerHTML='';document.body.style.overflow='';
     pendingModalAction=null;
@@ -634,7 +655,7 @@
       const title='导入并替换当前记录？';
       modal(`<h2>${title}</h2>`,`<div class="notice">备份含 ${incoming.sessions.length} 次训练、${incoming.customExercises.length} 个自建动作（含照片）、${incoming.customPlans.length} 份自定义计划、${incoming.foodEntries.length} 条饮食和 ${incoming.weights.length} 条体重记录${incoming.draft?'，另有未结束草稿':''}。<br>这不是合并。确认后会替换当前本地数据。</div><div class="row wrap" style="margin-top:16px"><button class="btn btn-secondary" data-action="export-json">先备份当前数据</button></div><div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">取消</button><button class="btn btn-primary" data-action="confirm">确认替换</button></div>`);
       pendingModalAction=()=>{
-        if(revision!==startRevision)throw new Error('记录已变化，导入已中止。请重新选择文件。');
+        if(token!==importTicket||revision!==startRevision)throw new Error('记录或导入文件已变化，导入已中止。请重新选择文件。');
         commit(incoming,true);closeModal();render();toast('备份已验证并导入。');
       };
     }catch(error){toast(error.message||'无法读取备份。');}
@@ -789,9 +810,30 @@
     }
   });
   document.addEventListener('visibilitychange',()=>{if(document.hidden)rememberScroll();else if(timerEnd)tickTimer();});
+  function syncBrowserStorage(raw) {
+    const oldDraft=state.draft?.id;
+    storageSnapshot=raw;revision+=1;
+    // Invalidate pending file reads and confirmation callbacks, even when the
+    // replacement is unreadable. Preserve those bytes for explicit recovery.
+    importTicket++;loadingImport=false;closeModal();
+    try {
+      const incoming=raw===null?C.emptyState():C.parseBackup(raw,BASE_EX);
+      state=incoming;storageBlocked=false;bootError='';damagedRaw='';
+      refreshCatalog();
+      if(oldDraft!==state.draft?.id){runtime.workoutScroll=0;stopTimer();}
+      render();toast(raw===null?'另一个窗口已清空本地数据。':'已同步另一个窗口的本地修改。');
+    } catch (_) {
+      storageBlocked=true;damagedRaw=raw||'';
+      bootError='另一个窗口的本地数据无法读取，已暂停写入，以免覆盖原文。请先在设置中导出原始数据，再恢复备份或重置。';
+      render();toast('本地数据无法读取，已暂停写入；原文仍保留。');
+    }
+  }
   window.addEventListener('storage',event=>{
-    if(event.key!==STORE||isNative())return;
-    try{if(event.newValue){state=C.parseBackup(event.newValue,BASE_EX);}else state=C.emptyState();revision+=1;refreshCatalog();closeModal();render();toast('已同步另一个窗口的本地修改。');}catch(_){toast('另一个窗口写入的数据无效，请先备份再处理。');}
+    if(isNative()||(event.key!==STORE&&event.key!==null)||event.storageArea!==localStorage)return;
+    // Read the current value: queued events may describe an older write, and
+    // localStorage.clear() uses a null key rather than the training key.
+    try{const raw=localStorage.getItem(STORE);if(raw!==storageSnapshot)syncBrowserStorage(raw);}
+    catch(_){storageBlocked=true;toast('无法读取本地存储，已暂停写入。请重新打开后检查。');}
   });
   window.LeanBack=function(){if(document.body.classList.contains('keyboard-open')){document.activeElement?.blur();return true;}if(!$('#modal').hidden){closeModal();return true;}if(activeWorkout()){rememberScroll();overview=true;render();return true;}if(tab!=='home'){go('home');return true;}return false;};
   window.LeanNativeResult=function(message){toast(String(message));};

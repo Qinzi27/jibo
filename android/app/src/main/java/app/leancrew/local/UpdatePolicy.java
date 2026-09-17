@@ -8,6 +8,7 @@ import java.net.URISyntaxException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /** Platform-independent update trust boundaries, shared with the executable JVM tests. */
@@ -110,6 +111,32 @@ public final class UpdatePolicy {
 
     public static boolean autoCheckDue(long now, long last) {
         return last <= 0 || (now >= last && now - last >= AUTO_INTERVAL_MS);
+    }
+
+    /** Only OS-installed handlers can receive the update/settings intents and APK grant. */
+    public static final class SystemHandler {
+        public final String packageName, activityName;
+        public final boolean system, enabled, exported;
+        public SystemHandler(String packageName, String activityName, boolean system, boolean enabled, boolean exported) {
+            this.packageName = packageName; this.activityName = activityName;
+            this.system = system; this.enabled = enabled; this.exported = exported;
+        }
+        private boolean trusted() {
+            return system && enabled && exported && packageName != null && !packageName.isEmpty()
+                    && activityName != null && !activityName.isEmpty();
+        }
+    }
+
+    /** Keep the OEM's preferred handler only when it is also in the trusted result set. */
+    public static SystemHandler selectSystemHandler(List<SystemHandler> handlers, String preferredPackage, String preferredActivity) {
+        SystemHandler first = null;
+        if (handlers == null) return null;
+        for (SystemHandler handler : handlers) {
+            if (handler == null || !handler.trusted()) continue;
+            if (first == null) first = handler;
+            if (handler.packageName.equals(preferredPackage) && handler.activityName.equals(preferredActivity)) return handler;
+        }
+        return first;
     }
 
     private static MessageDigest digest() throws IOException {

@@ -116,6 +116,21 @@ public final class UpdatePolicyTest {
         check("under daily limit suppressed", !UpdatePolicy.autoCheckDue(1001, 1000));
         check("daily limit exact boundary", UpdatePolicy.autoCheckDue(1000 + UpdatePolicy.AUTO_INTERVAL_MS, 1000));
         check("clock rollback suppresses repeat", !UpdatePolicy.autoCheckDue(999, 1000));
+
+        UpdatePolicy.SystemHandler system = new UpdatePolicy.SystemHandler("com.android.packageinstaller", "Install", true, true, true);
+        UpdatePolicy.SystemHandler oem = new UpdatePolicy.SystemHandler("com.vendor.installer", "VendorInstall", true, true, true);
+        UpdatePolicy.SystemHandler impostor = new UpdatePolicy.SystemHandler("evil.fakeinstaller", "Install", false, true, true);
+        check("system installer selected", UpdatePolicy.selectSystemHandler(Arrays.asList(system), null, null) == system);
+        check("third-party preferred installer excluded", UpdatePolicy.selectSystemHandler(Arrays.asList(impostor, system), impostor.packageName, impostor.activityName) == system);
+        check("only third-party handlers fails closed", UpdatePolicy.selectSystemHandler(Arrays.asList(impostor), impostor.packageName, impostor.activityName) == null);
+        check("OEM preferred system installer retained", UpdatePolicy.selectSystemHandler(Arrays.asList(system, oem), oem.packageName, oem.activityName) == oem);
+        check("resolver outside trusted candidates ignored", UpdatePolicy.selectSystemHandler(Arrays.asList(system, oem), "android", "ResolverActivity") == system);
+        check("preferred handler requires package and activity match", UpdatePolicy.selectSystemHandler(Arrays.asList(system, oem), oem.packageName, system.activityName) == system);
+        check("disabled system installer excluded", UpdatePolicy.selectSystemHandler(Arrays.asList(new UpdatePolicy.SystemHandler("android", "Install", true, false, true)), null, null) == null);
+        check("unexported system installer excluded", UpdatePolicy.selectSystemHandler(Arrays.asList(new UpdatePolicy.SystemHandler("android", "Install", true, true, false)), null, null) == null);
+        check("empty handler results fails closed", UpdatePolicy.selectSystemHandler(Arrays.asList(), null, null) == null);
+        check("null handler results fails closed", UpdatePolicy.selectSystemHandler(null, null, null) == null);
+        check("null and incomplete handlers skipped", UpdatePolicy.selectSystemHandler(Arrays.asList(null, new UpdatePolicy.SystemHandler(null, "Install", true, true, true), new UpdatePolicy.SystemHandler("android", "", true, true, true), system), null, null) == system);
         System.out.println("UpdatePolicy: " + passed + " checks passed");
     }
 }

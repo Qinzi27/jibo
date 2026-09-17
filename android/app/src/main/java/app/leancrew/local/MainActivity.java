@@ -48,7 +48,7 @@ import java.util.Map;
  * Successful compilation does not replace installation and functional device testing.
  */
 public final class MainActivity extends Activity {
-    private static final String HOST = "appassets.androidplatform.net";
+    private static final String HOST = LocalSecurityPolicy.HOST;
     private static final String START = "https://" + HOST + "/assets/www/index.html";
     private static final int REQUEST_IMPORT = 41;
     private static final int REQUEST_EXPORT = 42;
@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private final Object exportLock = new Object();
     private String pendingExport;
     private Uri pendingCapture;
+    private Uri deliveredCapture;
     private SharedPreferences runtime;
     private OnBackInvokedCallback backCallback;
     private boolean backCallbackRegistered;
@@ -135,17 +136,21 @@ public final class MainActivity extends Activity {
                 }
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                if (!"GET".equals(request.getMethod())
+                        || (request.isForMainFrame() && !isAppDocument(request.getUrl())))
+                    return denied(403, "Bundled app only");
                 return localAsset(request.getUrl());
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 // No untrusted page may gain access to the native bridge.
-                return !isLocal(request.getUrl());
+                return !request.isForMainFrame() || !isAppDocument(request.getUrl());
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 discardCapture();
+                releaseDeliveredCapture(null);
                 fileCallback = callback;
                 boolean image = false;
                 for (String accepted : params.getAcceptTypes()) {
@@ -242,20 +247,26 @@ public final class MainActivity extends Activity {
 
     private boolean isDocumentUri(Uri uri) {
         // Never let a third-party picker point WebView at an app-private file.
-        if (uri == null || !"content".equals(uri.getScheme()) || uri.getAuthority() == null
-                || uri.getUserInfo() != null || uri.getPort() != -1
-                || CameraFileProvider.AUTHORITY.equals(uri.getAuthority())
-                || UpdateFileProvider.AUTHORITY.equals(uri.getAuthority())) return false;
+        if (!isExternalDocumentUri(uri)) return false;
         try (InputStream input = getContentResolver().openInputStream(uri)) { return input != null; }
         catch (Exception error) { return false; }
     }
 
+    private boolean isExternalDocumentUri(Uri uri) {
+        return uri != null && LocalSecurityPolicy.externalDocument(uri.getScheme(), uri.getAuthority());
+    }
+
+    private void releaseDeliveredCapture(String filename) {
+        if (deliveredCapture == null || (filename != null && !filename.equals(deliveredCapture.getLastPathSegment()))) return;
+        CameraFileProvider.deleteCapture(this, deliveredCapture);
+        deliveredCapture = null;
+    }
+
     private boolean isLocal(Uri uri) {
-        String path = uri.getPath();
-        return "https".equals(uri.getScheme()) && HOST.equals(uri.getHost())
-            && uri.getPort() == -1 && uri.getUserInfo() == null
-            && path != null && path.startsWith("/assets/www/")
-            && !path.contains("..") && !path.contains("\\") && !path.contains("\u0000");
+        return uri != null && LocalSecurityPolicy.bundledAsset(uri.getScheme(), uri.getAuthority(), uri.getPath());
+    }
+    private boolean isAppDocument(Uri uri) {
+        return uri != null && LocalSecurityPolicy.appDocument(uri.getScheme(), uri.getAuthority(), uri.getPath(), uri.getQuery());
     }
     private WebResourceResponse denied(int code, String reason) {
         return new WebResourceResponse("text/plain", "UTF-8", code, reason,
@@ -277,6 +288,10 @@ public final class MainActivity extends Activity {
             Map<String,String> headers = new HashMap<>();
             headers.put("X-Content-Type-Options", "nosniff");
             headers.put("Cache-Control", "no-cache");
+            // Header-level frame restrictions also cover SVG/image documents;
+            // native bridge objects must never be exposed inside child frames.
+            headers.put("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; worker-src 'none'; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'");
+            headers.put("Referrer-Policy", "no-referrer");
             return new WebResourceResponse(types.get(extension), "png".equals(extension) ? null : "UTF-8",
                     200, "OK", headers, input);
         } catch (IOException error) { return denied(404, "Asset not found"); }
@@ -293,9 +308,8 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String read() {
             synchronized (storeLock) {
                 if (!store.getBaseFile().exists() && !new File(store.getBaseFile().getPath()+".bak").exists()) return "";
-                try {
-                    byte[] bytes = store.readFully();
-                    if (bytes.length > MAX_BYTES) throw new IOException("Stored data exceeds limit");
+                try (InputStream input = store.openRead()) {
+                    byte[] bytes = LocalSecurityPolicy.readBounded(input, MAX_BYTES);
                     return new String(bytes, StandardCharsets.UTF_8);
                 } catch (IOException error) {
                     // An invalid marker triggers the web app's write-protection path.
@@ -304,7 +318,7 @@ public final class MainActivity extends Activity {
             }
         }
         @JavascriptInterface public boolean write(String json) {
-            if (json == null) return false;
+            if (json == null || json.length() > MAX_BYTES) return false;
             byte[] data = json.getBytes(StandardCharsets.UTF_8);
             if (data.length > MAX_BYTES) return false;
             try {
@@ -336,7 +350,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> updateBackCallback(enabled));
         }
         @JavascriptInterface public boolean exportText(String filename, String text, String mime) {
-            if (text == null || text.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES * 2) return false;
+            if (text == null || text.length() > MAX_BYTES * 2 || text.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES * 2) return false;
             if (filename == null || !filename.matches("[A-Za-z0-9._-]{1,100}")) return false;
             if (!("application/json".equals(mime) || "text/csv".equals(mime) || "text/plain".equals(mime))) return false;
             synchronized (exportLock) {
@@ -355,6 +369,12 @@ public final class MainActivity extends Activity {
                 }
             });
             return true;
+        }
+        @JavascriptInterface public void releasePhotoSelection(String filename) {
+            // Bind acknowledgement to the selected photo so a late decode from
+            // an earlier editor cannot delete a more recent camera result.
+            if (filename == null || filename.length() > 100) return;
+            runOnUiThread(() -> releaseDeliveredCapture(filename));
         }
         @JavascriptInterface public void copyText(String text) {
             if (text == null || text.length() > 20000) return;
@@ -382,6 +402,7 @@ public final class MainActivity extends Activity {
             } else if (valid) {
                 Uri photoUri = pendingCapture;
                 pendingCapture = null;
+                deliveredCapture = photoUri;
                 revokeUriPermission(photoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 // The app itself can still read the private provider; the camera's grant ends now.
                 completeFileChoice(photoUri);
@@ -395,6 +416,7 @@ public final class MainActivity extends Activity {
             synchronized (exportLock) { content = pendingExport; pendingExport = null; }
             final Uri uri = result == RESULT_OK && intent != null ? intent.getData() : null;
             if (uri == null || content == null) { notifyWeb("导出已取消；本地记录未改变。"); return; }
+            if (!isExternalDocumentUri(uri)) { notifyWeb("保存位置无效，请重新选择；本地记录未改变。"); return; }
             new Thread(() -> {
                 try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
                     if (output == null) throw new IOException("No writable stream");
@@ -464,6 +486,7 @@ public final class MainActivity extends Activity {
         updateBackCallback(false);
         if (updates != null) updates.detach(updateListener);
         if (isFinishing()) discardCapture();
+        releaseDeliveredCapture(null);
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         if (web != null) {
             web.removeJavascriptInterface("LeanNative"); web.stopLoading();

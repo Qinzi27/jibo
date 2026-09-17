@@ -4,11 +4,11 @@
 
 ## 安装
 
-下载 [肌薄 v1.5.0 Android 版](https://github.com/Qinzi27/jibo/releases/latest)，将 APK 传到手机后打开，按系统提示安装。可使用 [SHA-256 校验文件](dist/jibo-v1.5.0.apk.sha256) 核对安装包。
+下载 [肌薄 v1.5.1 Android 版](https://github.com/Qinzi27/jibo/releases/latest)，将 APK 传到手机后打开，按系统提示安装。可使用 [SHA-256 校验文件](dist/jibo-v1.5.1.apk.sha256) 核对安装包。
 
 ## 应用更新
 
-首次从 v1.4 或更早版本升级，需要手动安装 v1.5 APK；保持原应用和记录，不要先卸载。此后可在「设置 → 软件更新」检查、下载并安装新版。
+首次从 v1.4 或更早版本升级，需要手动安装当前 APK；保持原应用和记录，不要先卸载。此后可在「设置 → 软件更新」检查、下载并安装新版。
 
 默认在打开应用时每天最多检查一次，可关闭自动检查；发现新版不会自动下载或打断训练。点下载后显示进度，可随时取消。下载文件留在应用缓存，校验大小、SHA-256、包名、版本和签名信息通过后才交给 Android 安装器。系统可能要求允许肌薄安装应用，并由用户确认安装。
 
@@ -28,9 +28,19 @@
 
 图片在设备上压缩成副本，原图不变。动作图片、计划和训练记录保存在应用私有空间，仅更新模块使用联网权限，仍没有训练数据或图片上传功能。Android 自动云备份和设备迁移已关闭，系统选择器明确请求仅本机内容；厂商选择器是否遵守该限定尚需真机确认。手机相册自身的云同步设置独立于肌薄。
 
-JSON 备份包含自建动作、图片与计划。卸载或清空应用会删除本地记录，请先主动导出备份。导入是确认后的完整替换。数据为本机明文 JSON，未提供加密功能。
+JSON 备份包含自建动作、图片与计划。卸载或清空应用会删除本地记录，请先主动导出备份。导入是确认后的完整替换。数据为本机明文 JSON，未提供独立的应用层加密。Android 版使用应用私有目录中的 AtomicFile 保存完整记录，并用私有 SharedPreferences 保存界面与更新偏好；浏览器版使用当前站点的 localStorage。没有远程数据库，也不需要数据库账号。
 
 空白不代表零；有效数据填写完整后才能标记完成。模板目标不会自动变成实际完成记录，自重次数、计时与负重次数分别统计。
+
+## 安全保护
+
+v1.5.1 补齐导入／导出目标校验，拒绝外部选择器返回的私有文件路径及本应用 provider 地址；WebView 仅允许本地入口页面，禁止远程网页、子页面和任意联网。拍照临时原图在压缩完成后按文件标识清理，压缩副本保留在记录中，不更改手机相册原图。
+
+浏览器版发现其他窗口修改或清空记录时同步状态；发现损坏内容时暂停写入并保留原文供导出恢复，导入取消或记录变化后不会继续执行过期确认。窗口写入前检查最新存储快照，但 localStorage 本身不提供跨进程事务。
+
+更新包仍需验证大小、哈希、包名、版本及原签名，安装和授权页面只交给系统组件。没有可用系统组件时保留已验证安装包并提示失败，不回退到第三方安装器。
+
+源码与安装包已检查私钥、常见访问令牌及非运行文件，未检出泄漏；这不等于对未知漏洞或被攻破／root 的设备作绝对安全保证。系统相机、文件选择器和覆盖安装的真实设备验证尚待完成。
 
 ## 电脑预览
 
@@ -59,6 +69,8 @@ Android 构建需要 Python 3、JDK 17+、Android SDK Platform 35 和 Build Tool
 ```bash
 python3 scripts/build_android.py --check-only
 python3 android/tests/run_tests.py
+python3 android/tests/run_local_security_tests.py
+python3 tests/packaging_security_test.py
 python3 scripts/build_android.py
 ```
 
@@ -68,7 +80,7 @@ python3 scripts/build_android.py
 
 首次本地构建会生成私有测试签名密钥。发布更新需保持相同包名与签名密钥；源码不包含此处 APK 的私钥，因此自行生成的密钥不能覆盖安装此处 APK。可通过 `LEAN_KEYSTORE_PATH`、`LEAN_KEY_ALIAS`、`LEAN_STORE_PASS`、`LEAN_KEY_PASS` 提供自己的固定密钥。不要提交私钥或密码。
 
-仓库的 Android Actions 工作流仅支持手动触发，需配置 `LEAN_KEYSTORE_BASE64`、`LEAN_KEY_ALIAS`、`LEAN_STORE_PASS`、`LEAN_KEY_PASS` 四项仓库 secrets；它保留构建产物，不自动发布。
+仓库的 Android Actions 工作流固定官方动作的提交版本，仅向签名所需步骤提供签名凭据，且仅上传本次构建产物。工作流仅支持手动触发，需配置 `LEAN_KEYSTORE_BASE64`、`LEAN_KEY_ALIAS`、`LEAN_STORE_PASS`、`LEAN_KEY_PASS` 四项仓库 secrets；它保留构建产物，不自动发布。
 
 可选浏览器回归需要 Node.js 与 Playwright。通过 `--node`、`--node-modules`、`--chromium` 指定已有工具，或使用 `PATH`、`NODE_PATH`、`CHROMIUM_PATH` 环境变量。默认也查找项目 `node_modules/playwright`。
 
@@ -76,9 +88,9 @@ python3 scripts/build_android.py
 python3 tests/jibo_ui_test.py --custom-only
 ```
 
-浏览器测试使用独立临时配置与随机本机端口，不使用日常浏览器记录。`--updates-only` 使用模拟原生桥验证界面状态，不代表真实安卓安装器测试。其他测试范围可通过 `--mobile-only`、`--pwa-only`、`--theory-only`、`--updates-only` 选择，省略范围参数运行主要界面回归。
+浏览器测试使用独立临时配置与随机本机端口，不使用日常浏览器记录。`--updates-only` 使用模拟原生桥验证界面状态，不代表真实安卓安装器测试。其他测试范围可通过 `--mobile-only`、`--pwa-only`、`--theory-only`、`--updates-only`、`--security-only` 选择，省略范围参数运行主要界面回归。
 
-v1.5.0 通过 73 项原生更新规则 JVM 测试、63 项核心测试与 157 项浏览器检查（更新界面专项 38、主要界面 97、PWA 离线 22）。更新专项使用模拟原生桥，检查取消、重试、安装授权返回、输入焦点和完整本地记录保留。APK 编译、对齐与签名验证通过，签名与旧版一致。尚未连接 Android 真机或模拟器验证系统选图、拍照、原生持久化、软键盘及覆盖安装。
+v1.5.1 通过 47 项本地文件／WebView 规则与 84 项更新规则 JVM 检查、63 项核心测试、5 组打包安全测试，以及 224 项浏览器检查（主要界面 97、自建动作与照片 42、PWA 离线 22、模拟更新界面 38、安全专项 25）。安全专项包含真实多窗口存储和故意注入的恶意导入／脚本／图片；外部图片探针被 CSP 阻断，没有外部响应。APK 编译、对齐与签名验证通过，签名与旧版一致。尚未连接 Android 真机或模拟器验证系统选图、拍照、原生持久化、软键盘及覆盖安装。
 
 ## 发布更新
 
