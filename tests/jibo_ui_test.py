@@ -23,6 +23,7 @@ parser.add_argument('--baseline', action='store_true', help='Skip the new 肌薄
 parser.add_argument('--pwa-only', action='store_true', help='Only test source web/ service-worker caching and offline reload')
 parser.add_argument('--mobile-only', action='store_true', help='Only test phone touch layout, workout navigation, timers and reduced viewport behavior; not a real Android keyboard')
 parser.add_argument('--custom-only', action='store_true', help='Only test custom movement photos and reusable plans; file input is automated, not a real camera or Android picker')
+parser.add_argument('--theory-only', action='store_true', help='Only test merged plans/progress navigation and local theory screenshot browsing; clipboard is intercepted, no external source page opens')
 args = parser.parse_args()
 if not args.node:
     parser.error('Node.js is required; install it on PATH or pass --node PATH')
@@ -36,7 +37,8 @@ args.output_dir.mkdir(parents=True, exist_ok=True)
 env = os.environ.copy()
 env.update(JIBO_ROOT=str(ROOT), JIBO_OUTPUT=str(args.output_dir.resolve()),
            JIBO_BASELINE='1' if args.baseline else '0', JIBO_PWA_ONLY='1' if args.pwa_only else '0',
-           JIBO_MOBILE_ONLY='1' if args.mobile_only else '0', JIBO_CUSTOM_ONLY='1' if args.custom_only else '0')
+           JIBO_MOBILE_ONLY='1' if args.mobile_only else '0', JIBO_CUSTOM_ONLY='1' if args.custom_only else '0',
+           JIBO_THEORY_ONLY='1' if args.theory_only else '0')
 if args.node_modules:
     env['NODE_PATH'] = args.node_modules
 if args.chromium:
@@ -49,7 +51,7 @@ const http = require('node:http');
 const assert = require('node:assert/strict');
 const {chromium} = require('playwright');
 const root=process.env.JIBO_ROOT, output=process.env.JIBO_OUTPUT;
-const baseline=process.env.JIBO_BASELINE==='1', pwaOnly=process.env.JIBO_PWA_ONLY==='1', mobileOnly=process.env.JIBO_MOBILE_ONLY==='1', customOnly=process.env.JIBO_CUSTOM_ONLY==='1';
+const baseline=process.env.JIBO_BASELINE==='1', pwaOnly=process.env.JIBO_PWA_ONLY==='1', mobileOnly=process.env.JIBO_MOBILE_ONLY==='1', customOnly=process.env.JIBO_CUSTOM_ONLY==='1', theoryOnly=process.env.JIBO_THEORY_ONLY==='1';
 const store='lean-crew-local-v1';
 const checks=[], errors=[], external=[];
 let context, server;
@@ -58,7 +60,11 @@ const state=p=>p.evaluate(k=>JSON.parse(localStorage.getItem(k) || JSON.stringif
 const saved=p=>p.evaluate(k=>localStorage.getItem(k),store);
 const click=(p,action,tail='')=>p.locator(`[data-action="${action}"]${tail}:visible`).first().click();
 const finish=async p=>{await click(p,'finish');await p.locator('#modal [data-action="confirm"]').waitFor({state:'visible'});await click(p,'confirm');};
-const nav=async(p,name)=>p.locator(`${p.viewportSize().width<=760?'.mobile-nav':'.desktop-nav'} [data-nav="${name}"]`).click();
+const nav=async(p,name)=>{
+  const destination=name==='progress'?'plans':name;
+  await p.locator(`${p.viewportSize().width<=760?'.mobile-nav':'.desktop-nav'} [data-nav="${destination}"]`).click();
+  if(name==='plans'||name==='progress')await click(p,'plan-view',`[data-view="${name}"]`);
+};
 const close=async p=>{if(await p.locator('#modal').isVisible())await click(p,'close-modal');};
 function hook(p) {p.on('pageerror',e=>errors.push(String(e)));p.on('request',r=>{if(!r.url().startsWith(origin)&&!r.url().startsWith('data:')&&!r.url().startsWith('blob:'))external.push(r.url());});}
 let origin;
@@ -81,6 +87,7 @@ async function main(){
   if(pwaOnly){await pwaChecks();return;}
   if(mobileOnly){await mobileChecks();return;}
   if(customOnly){await customChecks();return;}
+  if(theoryOnly){await theoryChecks();return;}
   let p=await load();
   check('clean install contains no invented training records',(await state(p)).sessions.length===0);
   check('mobile home has no horizontal overflow',await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -144,11 +151,107 @@ async function main(){
   await p.close();p=await load('{broken');check('unreadable stored data activates write protection',await p.locator('.storage-error').count()===1);
   if(await p.locator('[data-action="template"]').count())await click(p,'template');else {await nav(p,'plans');await click(p,'plan-detail','[data-plan="gym-a"]');await click(p,'start-plan','[data-plan="gym-a"]');}check('corrupt source is never silently replaced',await saved(p)==='{broken');await p.close();
   for(const width of [320,390,768,1280]){
-    p=await load(null,width);for(const section of (baseline?['home','library','food','progress']:['home','plans','library','food','progress'])){await nav(p,section);check(`${width}px ${section} has no horizontal overflow`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+    p=await load(null,width);for(const section of (baseline?['home','library','food','progress']:['home','plans','library','food','progress','theory'])){await nav(p,section);check(`${width}px ${section} has no horizontal overflow`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
     await click(p,'settings');check(`${width}px settings has no horizontal overflow`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     if(!baseline){await nav(p,'plans');await click(p,'plan-detail','[data-plan="gym-a"]');check(`${width}px plan detail stays within viewport`,await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));await click(p,'start-plan','[data-plan="gym-a"]');check(`${width}px active workout has no horizontal overflow`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await click(p,'discard-draft');await click(p,'confirm');}if(width===1280){await nav(p,'home');await p.screenshot({path:path.join(output,'home-desktop.png')});}await p.close();
   }
   check('no unhandled JavaScript exceptions',errors.length===0);check('application makes no external runtime requests',external.length===0);
+}
+async function planProgressChecks(){
+  let p=await load(null,390);
+  const fixture=await p.evaluate(()=>{
+    const C=LeanCore,s=C.emptyState();
+    const ex=C.newCustomExercise({name:'合并导航验收动作',group:'肩部',mode:'reps'});
+    s.customExercises=[ex];
+    const plan=C.newCustomPlan({name:'我的导航回归计划',durationMinutes:25,blocks:[{exerciseId:ex.id,sets:3,target:'8–12 次',restSeconds:60}]});
+    s.customPlans=[plan];
+    const history=C.newDraft(C.localDate());history.note='保持原样的历史记录';
+    history.blocks=[C.newBlock('chest-press'),C.newBlock('push-up'),C.newBlock('plank')];
+    Object.assign(history.blocks[0].sets[0],{weight:20,reps:12,done:true});
+    Object.assign(history.blocks[0].sets[1],{weight:25,reps:8,done:true});
+    Object.assign(history.blocks[0].sets[2],{weight:100,reps:100,done:false});
+    Object.assign(history.blocks[1].sets[0],{reps:15,done:true});
+    Object.assign(history.blocks[2].sets[0],{seconds:45,done:true});
+    s.sessions=[history];s.weights=[{date:C.localDate(),kg:65}];
+    s.draft=C.newPlanDraft(plan);s.draft.blocks[0].sets[0].reps=7;
+    return C.validateState(s,LEAN_EXERCISES);
+  });
+  await p.close();p=await load(JSON.stringify(fixture),390);
+  const initial=await saved(p),planId=fixture.customPlans[0].id;
+  check('mobile navigation has five destinations with theory and no separate progress tab',JSON.stringify(await p.locator('.mobile-nav [data-nav]').evaluateAll(es=>es.map(e=>e.dataset.nav)))===JSON.stringify(['home','plans','library','theory','food']));
+  check('desktop navigation matches the same five destinations',JSON.stringify(await p.locator('.desktop-nav [data-nav]').evaluateAll(es=>es.map(e=>e.dataset.nav)))===JSON.stringify(['home','plans','library','theory','food']));
+  await nav(p,'plans');
+  check('merged page opens the plan catalogue with a two-part accessible switch',await p.locator('[data-action="plan-view"]').count()===2&&await p.locator('[data-action="plan-view"][data-view="plans"]').getAttribute('aria-pressed')==='true'&&await p.locator('[data-action="plan-view"][data-view="progress"]').getAttribute('aria-pressed')==='false');
+  await click(p,'plan-location','[data-location="custom"]');
+  check('existing custom plans remain reachable inside the merged page',await p.locator(`[data-action="plan-detail"][data-plan="${planId}"]`).isVisible());
+  await click(p,'plan-view','[data-view="progress"]');
+  check('progress segment preserves completed-only totals and separate training units',JSON.stringify(await p.locator('.kpi-grid .metric').allTextContents())===JSON.stringify(['1','4','1'])&&await p.locator('.history-tags').innerText().then(t=>t.includes('4 组')&&t.includes('35 次')&&t.includes('45 秒')&&t.includes('440 kg·次')));
+  check('progress segment retains weight history and existing archive',await p.locator('.weight-number').innerText().then(t=>t.includes('65'))&&await p.locator('.history-card').count()===1);
+  await click(p,'history');
+  check('merged history still exposes editing and repeating the original training',await p.locator('[data-action="edit-session"]').isVisible()&&await p.locator('[data-action="repeat-session"]').isVisible()&&await p.locator('#modal').innerText().then(t=>t.includes('20 kg × 12 次')));await close(p);
+  await click(p,'plan-view','[data-view="plans"]');
+  check('returning to plans retains the selected custom-plan filter',await p.locator(`[data-action="plan-detail"][data-plan="${planId}"]`).isVisible()&&await p.locator('[data-action="plan-location"][data-location="custom"]').getAttribute('aria-pressed')==='true');
+  await click(p,'plan-view','[data-view="progress"]');await nav(p,'theory');await nav(p,'home');
+  check('plan/progress/theory navigation never mutates current draft or historical data',await saved(p)===initial&&await p.locator('[data-field="reps"]').first().inputValue()==='7');
+  await nav(p,'progress');await p.locator('#weight-kg').fill('66.1');await p.locator('#weight-form button').click();
+  const weighted=await state(p),expected=structuredClone(fixture);expected.weights[0].kg=66.1;
+  check('weight entry inside merged progress updates only that day and preserves plans and draft',JSON.stringify(weighted)===JSON.stringify(expected));
+  const beforeRestart=await saved(p);await p.reload();await nav(p,'progress');
+  check('merged progress reads the same archive and saved weight after reload',await saved(p)===beforeRestart&&await p.locator('.history-card').count()===1&&await p.locator('.weight-number').innerText().then(t=>t.includes('66.1')));
+  await p.screenshot({path:path.join(output,'plans-progress-mobile.png')});
+  return {p,before:beforeRestart};
+}
+async function theoryChecks(){
+  const {p,before}=await planProgressChecks();
+  await nav(p,'theory');
+  const posts=await p.evaluate(()=>JIBO_THEORY_POSTS);
+  check('theory includes attributed local screenshot cards from both selected authors',posts.length>=2&&new Set(posts.map(post=>post.id)).size===posts.length&&['sun','alan'].every(author=>posts.some(post=>post.authorId===author))&&posts.every(post=>post.author&&post.handle&&post.date&&post.title&&post.commentary&&/^https:\/\/x\.com\/[^/]+\/status\/\d+$/.test(post.sourceUrl)));
+  check('theory cards expose all bundled posts without an account or network frame',await p.locator('.theory-card').count()===posts.length&&await p.locator('iframe').count()===0&&await p.locator('.theory-card[data-post-id]').evaluateAll(es=>es.map(e=>e.dataset.postId)).then(ids=>posts.every(post=>ids.includes(post.id))));
+  await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
+  check('every theory screenshot decodes from a packaged local image',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>=320&&i.naturalHeight>0&&!/^https?:\/\/(?!127\.0\.0\.1:)/.test(i.src))));
+  await p.screenshot({path:path.join(output,'theory-mobile.png')});
+  await p.screenshot({path:path.join(output,'theory-mobile-full.png'),fullPage:true});
+  for(const author of ['sun','alan']){
+    await click(p,'theory-filter',`[data-author="${author}"]`);
+    const ids=await p.locator('.theory-card').evaluateAll(es=>es.map(e=>e.dataset.postId));
+    check(`theory ${author} filter shows exactly that author's screenshots`,ids.length===posts.filter(post=>post.authorId===author).length&&ids.every(id=>posts.some(post=>post.id===id&&post.authorId===author))&&await p.locator(`[data-action="theory-filter"][data-author="${author}"]`).getAttribute('aria-pressed')==='true');
+  }
+  await click(p,'theory-filter','[data-author="all"]');
+  check('all-author filter restores every screenshot card',await p.locator('.theory-card').count()===posts.length);
+  const aside=await p.locator('#theory-aside-text').innerText();await click(p,'theory-shuffle');
+  check('changing app commentary leaves all attributed source screenshots intact',await p.locator('#theory-aside-text').innerText()!==aside&&await p.locator('.theory-card').count()===posts.length);
+  await p.evaluate(()=>{window.__copiedTheorySources=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>window.__copiedTheorySources.push(text)});});
+  await context.setOffline(true);
+  const pagesBefore=context.pages().length,urlBefore=p.url();
+  for(const post of [posts.find(x=>x.authorId==='sun'),posts.find(x=>x.authorId==='alan')]){
+    await click(p,'theory-image',`[data-id="${post.id}"]`);
+    const image=p.locator('.theory-lightbox img');await image.evaluate(e=>e.decode());
+    check(`offline enlargement displays the selected ${post.authorId} screenshot`,await image.evaluate(e=>e.complete&&e.naturalWidth>=320)&&await image.getAttribute('src')===await p.locator(`.theory-card[data-post-id="${post.id}"] img`).getAttribute('src'));
+    check(`offline enlargement stays within phone width for ${post.authorId}`,await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));
+    await click(p,'theory-zoom');
+    check(`offline ${post.authorId} screenshot supports scrollable full-size reading`,await p.locator('[data-action="theory-zoom"]').getAttribute('aria-pressed')==='true'&&await p.locator('.theory-lightbox').evaluate(e=>e.scrollWidth>e.clientWidth&&getComputedStyle(e).overflowX==='auto')&&await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));
+    await click(p,'theory-zoom');
+    check(`offline ${post.authorId} screenshot can return to screen-fitting size`,await p.locator('[data-action="theory-zoom"]').getAttribute('aria-pressed')==='false'&&await p.locator('.theory-lightbox').evaluate(e=>e.scrollWidth<=e.clientWidth));
+    await close(p);await click(p,'theory-source',`[data-id="${post.id}"]`);
+    await p.waitForFunction(source=>window.__copiedTheorySources.includes(source),post.sourceUrl);
+    check(`copying ${post.authorId} source returns the exact source URL without navigation`,await p.evaluate(source=>window.__copiedTheorySources.at(-1)===source,post.sourceUrl)&&p.url()===urlBefore&&context.pages().length===pagesBefore);
+  }
+  await click(p,'theory-filter','[data-author="sun"]');await nav(p,'plans');await nav(p,'theory');
+  await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
+  check('offline return to theory keeps its bundled screenshots readable',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>=320)));
+  await click(p,'theory-filter','[data-author="all"]');
+  await p.locator('#toast').waitFor({state:'hidden'});
+  for(const width of [320,390,430,1280]){
+    await p.setViewportSize({width,height:844});
+    check(`${width}px theory cards and author controls fit the viewport`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)&&await p.locator('.theory-card').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})));
+    if(width===1280){await p.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await p.screenshot({path:path.join(output,'theory-desktop-full.png'),fullPage:true});}
+    await click(p,'theory-image',`[data-id="${posts[0].id}"]`);await p.locator('.theory-lightbox img').evaluate(e=>e.decode());
+    check(`${width}px enlarged theory screenshot fits its dialog`,await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));
+    if(width===320||width===1280)await p.screenshot({path:path.join(output,`theory-enlarged-${width}.png`)});await close(p);
+  }
+  check('reading, filtering, enlarging and copying theory leaves all personal records unchanged',await saved(p)===before);
+  check('theory and merged navigation have no unhandled JavaScript errors',errors.length===0);
+  check('theory screenshots and copying sources make no external runtime requests',external.length===0);
 }
 async function customChecks(){
   let p=await load(null,390);await nav(p,'library');await click(p,'new-custom-exercise');
@@ -320,7 +423,7 @@ async function pwaChecks(){
   check('offline reload is served by service worker with HTTP cache disabled',response.fromServiceWorker()&&response.status()===200);
   check('offline home renders brand and weekly training overview',await p.locator('.brand strong').innerText()==='肌薄'&&await p.locator('.week-value').isVisible());
   await p.locator('.hero-mark').evaluate(i=>i.decode());check('offline home illustration decodes',await p.locator('.hero-mark').evaluate(i=>i.complete&&i.naturalWidth>0));
-  check('offline app script and plans load from service-worker cache',['app.js','core.js','exercises.js','plans.js','styles.css'].every(file=>offlineResponses.some(r=>r.url===origin+'/'+file&&r.fromServiceWorker&&r.status===200)));
+  check('offline app scripts, plans and theory load from service-worker cache',['app.js','core.js','exercises.js','plans.js','theory.js','styles.css'].every(file=>offlineResponses.some(r=>r.url===origin+'/'+file&&r.fromServiceWorker&&r.status===200)));
   await p.screenshot({path:path.join(output,'offline-home.png')});
   await nav(p,'plans');check('offline plans remain interactive',await p.locator('.plan-card').count()===3);await click(p,'plan-detail','[data-plan="gym-a"]');await click(p,'start-plan','[data-plan="gym-a"]');
   const offlineDraft=await saved(p);check('offline plan creation saves a blank six-movement draft',(await state(p)).draft.blocks.length===6&&(await state(p)).draft.blocks.every(b=>b.sets.length===2&&b.sets.every(s=>!s.done&&s.reps===null&&s.weight===null&&s.seconds===null)));
@@ -328,9 +431,17 @@ async function pwaChecks(){
   check('all 17 exercise illustrations decode while browser is offline',await p.locator('.exercise-card').count()===17&&await p.evaluate(()=>[...document.querySelectorAll('.exercise-picture img')].every(i=>i.complete&&i.naturalWidth>0)));
   check('new dumbbell row illustration is served by service worker offline',offlineResponses.some(r=>r.url===origin+'/assets/dumbbell-row.svg'&&r.fromServiceWorker&&r.status===200));
   await p.screenshot({path:path.join(output,'offline-library.png')});
+  await nav(p,'theory');
+  const theoryPosts=await p.evaluate(()=>JIBO_THEORY_POSTS);
+  check('all theory screenshot source files are explicitly precached',theoryPosts.length>0&&theoryPosts.every(post=>cache.urls.includes(new URL(post.image,origin+'/').href)));
+  await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
+  check('every theory screenshot decodes offline using the service-worker cache',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-card img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>=320))&&theoryPosts.every(post=>offlineResponses.some(r=>r.url===new URL(post.image,origin+'/').href&&r.fromServiceWorker&&r.status===200)));
+  await p.screenshot({path:path.join(output,'offline-theory.png')});
   await context.close();await launch();await context.setOffline(true);p=await context.newPage();hook(p);response=await p.goto(origin+'/index.html',{waitUntil:'load'});
   check('independent browser restart can open source app while offline',response.fromServiceWorker()&&await p.locator('.brand strong').innerText()==='肌薄');
   check('offline-created draft survives independent browser restart',await saved(p)===offlineDraft&&await p.locator('.block').count()===6);
+  await nav(p,'theory');await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
+  check('theory screenshots remain readable after an offline browser restart',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-card img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>=320))&&await saved(p)===offlineDraft);
   check('offline PWA run has no unhandled JavaScript errors',errors.length===0);check('offline PWA run makes no external requests',external.length===0);
   fs.writeFileSync(path.join(output,'pwa-evidence.json'),JSON.stringify({origin,registration,cacheName,declaredAssets:assets.length,cachedAssets:cache.urls,offlineResponses,httpCacheDisabled:true,offlineBrowserRestart:true},null,2));
 }
@@ -388,7 +499,7 @@ async function plans(p){
 }
 (async()=>{let failure;try{await main()}catch(e){failure=String(e.stack||e);console.error(failure);process.exitCode=1;if(context){const page=context.pages().at(-1);if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});console.error('OVERFLOW:',await page.evaluate(()=>[...document.querySelectorAll('body *')].map(e=>({tag:e.tagName,cls:e.className,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width})).filter(e=>e.right>innerWidth+1||e.left< -1)).catch(()=>[]));}}}finally{
   if(context)await context.close().catch(()=>{});if(server)await new Promise(resolve=>server.close(resolve));
-  const report={mode:pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,failure:failure||null,not_verified:['Android compilation/signing/device install','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
+  const report={mode:pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':theoryOnly?'Chrome merged plan/progress and local theory screenshot flow; actual localStorage; offline rendering and enlargement; intercepted clipboard, no external navigation':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,failure:failure||null,not_verified:['Android compilation/signing/device install','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','Native or OS clipboard', 'file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:checks.length,output,failure:failure||null}));
 }})();
 '''

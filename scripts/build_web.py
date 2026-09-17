@@ -16,8 +16,8 @@ def uri(path: Path):
     return 'data:'+types[path.suffix]+';base64,'+base64.b64encode(path.read_bytes()).decode()
 html=(WEB/'index.html').read_text(encoding='utf-8')
 styles=(WEB/'styles.css').read_text(encoding='utf-8')
-script_names=['core.js','exercises.js','plans.js','app.js']
-images={f'assets/{p.name}':uri(p) for p in sorted((WEB/'assets').glob('*.svg'))}
+script_names=['core.js','exercises.js','plans.js','theory.js','app.js']
+images={p.relative_to(WEB).as_posix():uri(p) for p in sorted((WEB/'assets').rglob('*')) if p.is_file() and p.suffix in {'.svg','.png'}}
 bootstrap='\nwindow.LEAN_SINGLE_FILE = true;\nwindow.LEAN_HERO_IMAGE = '+json.dumps(images['assets/hero.svg'])+';\n'
 bootstrap+='window.LEAN_EMBEDDED_IMAGES = '+json.dumps(images)+';\nwindow.LEAN_EXERCISES.forEach(function(e){e.image=window.LEAN_EMBEDDED_IMAGES[e.image];});\n'
 scripts=[(WEB/name).read_text(encoding='utf-8')+(bootstrap if name=='exercises.js' else '') for name in script_names]
@@ -34,7 +34,7 @@ html=html.replace('</body>', ''.join('<script>'+s+'</script>\n' for s in scripts
 for filename in ['jibo-offline.html','lean-crew-offline.html']:
     (DIST/filename).write_text(html,encoding='utf-8')
 assets=['./','./index.html','./styles.css']+['./'+name for name in script_names]+['./manifest.webmanifest']
-assets += ['./assets/'+p.name for p in sorted((WEB/'assets').iterdir()) if p.is_file()]
+assets += ['./'+p.relative_to(WEB).as_posix() for p in sorted((WEB/'assets').rglob('*')) if p.is_file()]
 # Include images and manifest in the cache identity so every changed offline resource refreshes.
 version=hashlib.sha256(b''.join(x.encode()+b'\0'+(WEB/x[2:]).read_bytes() for x in assets if x!='./')).hexdigest()[:12]
 sw='''/* Offline precache. Same-origin resources only. No remote calls. */

@@ -1,12 +1,12 @@
 {
   "name": "lean-crew-local",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "肌薄：薄肌训练计划、逐组记录与本地进度追踪；无运行时依赖。",
   "license": "MIT",
   "scripts": {
     "test": "node --test tests/core.test.cjs",
-    "check": "node --check web/core.js && node --check web/exercises.js && node --check web/plans.js && node --check web/app.js && node --check web/sw.js",
+    "check": "node --check web/core.js && node --check web/exercises.js && node --check web/plans.js && node --check web/theory.js && node --check web/app.js && node --check web/sw.js",
     "build": "python3 scripts/build_web.py",
     "start": "python3 scripts/serve.py"
   },
