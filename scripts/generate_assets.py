@@ -47,12 +47,6 @@ for name,body in art.items():
     (ASSETS/f'{name}.svg').write_text(svg,encoding='utf-8')
 hero='''<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><circle cx="128" cy="128" r="102" fill="none" stroke="#2c421a" stroke-width="2"/><circle cx="128" cy="128" r="91" fill="none" stroke="#2c421a" stroke-width="1" stroke-dasharray="3 8"/><g transform="rotate(-30 128 128)" fill="#283e18"><rect x="67" y="116" width="122" height="24" rx="9"/><rect x="50" y="80" width="27" height="96" rx="9"/><rect x="32" y="96" width="15" height="64" rx="6"/><rect x="179" y="80" width="27" height="96" rx="9"/><rect x="209" y="96" width="15" height="64" rx="6"/></g><path d="m155 46 5-15 5 15 15 5-15 5-5 15-5-15-15-5Z" fill="#283e18"/><path d="m76 188 4-10 4 10 10 4-10 4-4 10-4-10-10-4Z" fill="#283e18"/></svg>'''
 (ASSETS/'hero.svg').write_text(hero,encoding='utf-8')
-icon='''<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="120" fill="#c8f577"/><g fill="#203516" transform="rotate(-30 256 256)"><rect x="137" y="232" width="238" height="48" rx="16"/><rect x="99" y="167" width="53" height="178" rx="17"/><rect x="63" y="196" width="29" height="120" rx="10"/><rect x="359" y="167" width="53" height="178" rx="17"/><rect x="420" y="196" width="29" height="120" rx="10"/></g><path d="m340 97 8-25 8 25 25 8-25 8-8 25-8-25-25-8Z" fill="#203516"/></svg>'''
-(ASSETS/'icon.svg').write_text(icon,encoding='utf-8')
-try:
-    import cairosvg
-    for size in (192,512):
-        cairosvg.svg2png(bytestring=icon.encode(),write_to=str(ASSETS/f'icon-{size}.png'),output_width=size,output_height=size)
-except ImportError:
-    print('Optional CairoSVG unavailable. Existing PNG icons, if present, are kept.')
-print(f'Generated {len(art)} schematic exercise images + original app icons.')
+# Brand icons are generated independently from the approved blond-avatar master
+# by scripts/build_icons.py. Rebuilding exercise illustrations must not replace them.
+print(f'Generated {len(art)} schematic exercise images + training hero. Brand icons preserved.')

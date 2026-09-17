@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import re
+from runtime_assets import runtime_files
 ROOT=Path(__file__).resolve().parents[1]
 WEB=ROOT/'web'
 DIST=ROOT/'dist'
@@ -17,13 +18,14 @@ def uri(path: Path):
 html=(WEB/'index.html').read_text(encoding='utf-8')
 styles=(WEB/'styles.css').read_text(encoding='utf-8')
 script_names=['core.js','exercises.js','plans.js','theory.js','app.js']
-images={p.relative_to(WEB).as_posix():uri(p) for p in sorted((WEB/'assets').rglob('*')) if p.is_file() and p.suffix in {'.svg','.png'}}
+asset_files=[p for p in runtime_files(WEB) if p.relative_to(WEB).parts[0]=='assets']
+images={p.relative_to(WEB).as_posix():uri(p) for p in asset_files if p.suffix in {'.svg','.png'}}
 bootstrap='\nwindow.LEAN_SINGLE_FILE = true;\nwindow.LEAN_HERO_IMAGE = '+json.dumps(images['assets/hero.svg'])+';\n'
 bootstrap+='window.LEAN_EMBEDDED_IMAGES = '+json.dumps(images)+';\nwindow.LEAN_EXERCISES.forEach(function(e){e.image=window.LEAN_EMBEDDED_IMAGES[e.image];});\n'
 scripts=[(WEB/name).read_text(encoding='utf-8')+(bootstrap if name=='exercises.js' else '') for name in script_names]
 html=re.sub(r'  <link rel="manifest"[^>]+>\n','',html)
 html=re.sub(r'  <link rel="apple-touch-icon"[^>]+>\n','',html)
-html=html.replace('href="assets/icon.svg"','href="'+images['assets/icon.svg']+'"')
+html=html.replace('href="assets/icon-192.png"','href="'+images['assets/icon-192.png']+'"')
 html=html.replace('  <link rel="stylesheet" href="styles.css">','  <style>'+styles+'</style>')
 for src in script_names:
     html=html.replace(f'  <script src="{src}" defer></script>\n','')
@@ -34,7 +36,7 @@ html=html.replace('</body>', ''.join('<script>'+s+'</script>\n' for s in scripts
 for filename in ['jibo-offline.html','lean-crew-offline.html']:
     (DIST/filename).write_text(html,encoding='utf-8')
 assets=['./','./index.html','./styles.css']+['./'+name for name in script_names]+['./manifest.webmanifest']
-assets += ['./'+p.relative_to(WEB).as_posix() for p in sorted((WEB/'assets').rglob('*')) if p.is_file()]
+assets += ['./'+p.relative_to(WEB).as_posix() for p in asset_files]
 # Include images and manifest in the cache identity so every changed offline resource refreshes.
 version=hashlib.sha256(b''.join(x.encode()+b'\0'+(WEB/x[2:]).read_bytes() for x in assets if x!='./')).hexdigest()[:12]
 sw='''/* Offline precache. Same-origin resources only. No remote calls. */

@@ -14,6 +14,7 @@ import sys
 import zipfile
 import re
 import xml.etree.ElementTree as ET
+from runtime_assets import runtime_files
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -90,9 +91,10 @@ if args.check_only: raise SystemExit(0)
 out=ROOT/'build/android-direct'
 if out.exists():shutil.rmtree(out)
 for directory in ('classes','generated','dex','assets/www'):(out/directory).mkdir(parents=True,exist_ok=True)
-for item in (ROOT/'web').iterdir():
-    if item.is_dir():shutil.copytree(item,out/'assets/www'/item.name,dirs_exist_ok=True)
-    else:shutil.copy2(item,out/'assets/www'/item.name)
+for item in runtime_files(ROOT/'web'):
+    destination=out/'assets/www'/item.relative_to(ROOT/'web')
+    destination.parent.mkdir(parents=True,exist_ok=True)
+    shutil.copy2(item,destination)
 compiled=out/'resources.zip'
 run([aapt2,'compile','--dir',main/'res','-o',compiled])
 run([aapt2,'link','-o',out/'resources.apk','-I',platform,'--manifest',main/'AndroidManifest.xml',

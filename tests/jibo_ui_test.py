@@ -205,12 +205,16 @@ async function theoryChecks(){
   const {p,before}=await planProgressChecks();
   await nav(p,'theory');
   const posts=await p.evaluate(()=>JIBO_THEORY_POSTS);
+  const brand=p.locator('.brand-icon img');await brand.evaluate(i=>i.decode());
+  check('header shows the packaged blond avatar rather than the retired SVG logo',await brand.evaluate(i=>i.complete&&i.naturalWidth===512)&&await p.locator('link[rel="icon"]').getAttribute('type')==='image/png'&&await p.locator('link[rel="icon"]').getAttribute('href').then(src=>src.startsWith('data:image/png;')));
   check('theory includes attributed local screenshot cards from both selected authors',posts.length>=2&&new Set(posts.map(post=>post.id)).size===posts.length&&['sun','alan'].every(author=>posts.some(post=>post.authorId===author))&&posts.every(post=>post.author&&post.handle&&post.date&&post.title&&post.commentary&&/^https:\/\/x\.com\/[^/]+\/status\/\d+$/.test(post.sourceUrl)));
   check('theory cards expose all bundled posts without an account or network frame',await p.locator('.theory-card').count()===posts.length&&await p.locator('iframe').count()===0&&await p.locator('.theory-card[data-post-id]').evaluateAll(es=>es.map(e=>e.dataset.postId)).then(ids=>posts.every(post=>ids.includes(post.id))));
   await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
-  check('every theory screenshot decodes from a packaged local image',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>=320&&i.naturalHeight>0&&!/^https?:\/\/(?!127\.0\.0\.1:)/.test(i.src))));
+  check('every theory screenshot decodes from a packaged local image',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>0&&i.naturalHeight>0&&!/^https?:\/\/(?!127\.0\.0\.1:)/.test(i.src))));
   await p.screenshot({path:path.join(output,'theory-mobile.png')});
   await p.screenshot({path:path.join(output,'theory-mobile-full.png'),fullPage:true});
+  const meme=p.locator('.theory-meme-card img');await meme.evaluate(i=>i.decode());
+  check('meme is a separate local comic and is excluded from attributed post counts',await p.locator('.theory-meme-card').count()===1&&await meme.evaluate(i=>i.complete&&i.naturalWidth>0)&&await p.locator('#theory-count').innerText()===`${posts.length} / ${posts.length} 条原帖`&&await p.locator('.theory-meme-card .theory-card').count()===0);
   for(const author of ['sun','alan']){
     await click(p,'theory-filter',`[data-author="${author}"]`);
     const ids=await p.locator('.theory-card').evaluateAll(es=>es.map(e=>e.dataset.postId));
@@ -218,10 +222,26 @@ async function theoryChecks(){
   }
   await click(p,'theory-filter','[data-author="all"]');
   check('all-author filter restores every screenshot card',await p.locator('.theory-card').count()===posts.length);
+  for(const category of ['theory','training','food','meme']){
+    await click(p,'theory-category',`[data-category="${category}"]`);
+    const expected=posts.filter(post=>(post.category||'theory')===category).map(post=>post.id);
+    const shown=await p.locator('.theory-card').evaluateAll(es=>es.map(e=>e.dataset.postId));
+    check(`${category} category lists exactly its original posts without hiding the independent comic`,JSON.stringify(shown)===JSON.stringify(expected)&&await p.locator('.theory-meme-card').isVisible()&&await p.locator('#theory-count').innerText()===`${expected.length} / ${posts.length} 条原帖`);
+    if(category==='training'){await p.locator('.theory-library-head').scrollIntoViewIfNeeded();await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});await p.screenshot({path:path.join(output,'theory-filtered-mobile.png')});}
+  }
+  await click(p,'theory-category','[data-category="all"]');
+  await p.locator('#theory-search').pressSequentially(posts.find(post=>post.authorId==='sun').handle);
+  check('typing an author keyword filters live without stealing keyboard focus',await p.locator('.theory-card').count()===posts.filter(post=>post.authorId==='sun').length&&await p.locator('.theory-card').evaluateAll(es=>es.every(e=>e.querySelector('strong').textContent==='孙宇晨'))&&await p.locator('#theory-search').evaluate(e=>e===document.activeElement));
+  await click(p,'theory-filter','[data-author="alan"]');
+  check('author and keyword filters combine and show a clear empty state',await p.locator('.theory-card').count()===0&&await p.locator('.theory-empty').isVisible()&&await p.locator('.theory-meme-card').isVisible());
+  await click(p,'theory-clear');
+  check('clearing search restores all authors and topics without touching personal data',await p.locator('.theory-card').count()===posts.length&&await p.locator('#theory-search').inputValue()===''&&await p.locator('[data-action="theory-filter"][data-author="all"]').getAttribute('aria-pressed')==='true'&&await p.locator('[data-action="theory-category"][data-category="all"]').getAttribute('aria-pressed')==='true'&&await saved(p)===before);
   const aside=await p.locator('#theory-aside-text').innerText();await click(p,'theory-shuffle');
   check('changing app commentary leaves all attributed source screenshots intact',await p.locator('#theory-aside-text').innerText()!==aside&&await p.locator('.theory-card').count()===posts.length);
   await p.evaluate(()=>{window.__copiedTheorySources=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>window.__copiedTheorySources.push(text)});});
   await context.setOffline(true);
+  await click(p,'theory-meme');await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
+  check('offline comic enlargement is independent of X sources and author filters',await p.locator('.theory-lightbox img').getAttribute('src')===await meme.getAttribute('src')&&await p.locator('#modal [data-action="theory-source"]').count()===0&&await p.locator('#modal').innerText().then(text=>text.includes('不是孙宇晨或邵艾伦的推文')));await p.screenshot({path:path.join(output,'theory-comic-enlarged-mobile.png')});await close(p);
   const pagesBefore=context.pages().length,urlBefore=p.url();
   for(const post of [posts.find(x=>x.authorId==='sun'),posts.find(x=>x.authorId==='alan')]){
     await click(p,'theory-image',`[data-id="${post.id}"]`);
@@ -236,14 +256,33 @@ async function theoryChecks(){
     await p.waitForFunction(source=>window.__copiedTheorySources.includes(source),post.sourceUrl);
     check(`copying ${post.authorId} source returns the exact source URL without navigation`,await p.evaluate(source=>window.__copiedTheorySources.at(-1)===source,post.sourceUrl)&&p.url()===urlBefore&&context.pages().length===pagesBefore);
   }
+  const multipage=posts.find(post=>Array.isArray(post.images)&&post.images.length>1);
+  if(multipage){
+    await click(p,'theory-image',`[data-id="${multipage.id}"]`);await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
+    const firstSource=await p.locator('.theory-lightbox img').getAttribute('src');
+    check('long-post gallery starts at page one with no backward overflow',await p.locator('#theory-gallery-count').innerText()===`1 / ${multipage.images.length}`&&await p.locator('[data-action="theory-gallery"][data-direction="-1"]').isDisabled());
+    await click(p,'theory-zoom');
+    for(let index=1;index<multipage.images.length;index++){
+      await p.locator('.theory-lightbox').evaluate(e=>e.scrollTo({left:50,top:50,behavior:'instant'}));
+      await click(p,'theory-gallery','[data-direction="1"]');await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
+      check(`offline long-post page ${index+1} decodes while keeping zoom and resetting scroll`,await p.locator('.theory-lightbox img').evaluate(i=>i.complete&&i.naturalWidth>0)&&await p.locator('#theory-gallery-count').innerText()===`${index+1} / ${multipage.images.length}`&&await p.locator('[data-action="theory-zoom"]').getAttribute('aria-pressed')==='true'&&await p.locator('.theory-lightbox').evaluate(e=>e.scrollLeft===0&&e.scrollTop===0)&&await p.locator('.theory-lightbox img').getAttribute('src')!==firstSource);
+    }
+    check('long-post gallery stops at the final screenshot',await p.locator('[data-action="theory-gallery"][data-direction="1"]').isDisabled());
+    for(let index=multipage.images.length-1;index>0;index--)await click(p,'theory-gallery','[data-direction="-1"]');
+    check('backward gallery navigation restores the original first screenshot',await p.locator('.theory-lightbox img').getAttribute('src')===firstSource&&await p.locator('[data-action="theory-gallery"][data-direction="-1"]').isDisabled());
+    await p.screenshot({path:path.join(output,'theory-gallery-mobile.png')});await close(p);
+  }
   await click(p,'theory-filter','[data-author="sun"]');await nav(p,'plans');await nav(p,'theory');
   await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
-  check('offline return to theory keeps its bundled screenshots readable',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>=320)));
+  check('offline return to theory keeps its bundled screenshots readable',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>0)));
   await click(p,'theory-filter','[data-author="all"]');
   await p.locator('#toast').waitFor({state:'hidden'});
   for(const width of [320,390,430,1280]){
     await p.setViewportSize({width,height:844});
     check(`${width}px theory cards and author controls fit the viewport`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)&&await p.locator('.theory-card').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})));
+    check(`${width}px theory search and independent comic stay within the viewport`,await p.locator('#theory-search,.theory-meme-card').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;})));
+    await p.locator('[data-action="theory-category"]').last().scrollIntoViewIfNeeded();
+    check(`${width}px horizontal topic list keeps every chip reachable within its own scroll area`,await p.locator('.theory-topic-filters').evaluate(e=>{const r=e.getBoundingClientRect(),last=e.lastElementChild.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&getComputedStyle(e).overflowX==='auto'&&last.left>=r.left&&last.right<=r.right+1;})&&await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     if(width===1280){await p.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await p.screenshot({path:path.join(output,'theory-desktop-full.png'),fullPage:true});}
     await click(p,'theory-image',`[data-id="${posts[0].id}"]`);await p.locator('.theory-lightbox img').evaluate(e=>e.decode());
     check(`${width}px enlarged theory screenshot fits its dialog`,await p.locator('.modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth));
@@ -416,6 +455,7 @@ async function pwaChecks(){
   check('active service-worker cache uses generated content hash',cache.names.includes(cacheName)&&/^lean-crew-[a-f0-9]{12}$/.test(cacheName));
   check('all declared source assets are precached',assets.every(a=>cache.urls.includes(new URL(a,origin+'/').href)));
   check('plans script and dumbbell-row SVG are precached',cache.urls.includes(origin+'/plans.js')&&cache.urls.includes(origin+'/assets/dumbbell-row.svg'));
+  check('PWA cache includes final avatar sizes and excludes the source master and retired icon',cache.urls.includes(origin+'/assets/icon-192.png')&&cache.urls.includes(origin+'/assets/icon-512.png')&&cache.urls.includes(origin+'/assets/icon-maskable-512.png')&&!cache.urls.some(url=>url.includes('jibo-blond-master')||url.endsWith('/icon.svg')));
   const cdp=await context.newCDPSession(p);await cdp.send('Network.enable');await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});
   await context.setOffline(true);
   const offlineResponses=[];p.on('response',r=>offlineResponses.push({url:r.url(),fromServiceWorker:r.fromServiceWorker(),status:r.status()}));
@@ -433,15 +473,17 @@ async function pwaChecks(){
   await p.screenshot({path:path.join(output,'offline-library.png')});
   await nav(p,'theory');
   const theoryPosts=await p.evaluate(()=>JIBO_THEORY_POSTS);
-  check('all theory screenshot source files are explicitly precached',theoryPosts.length>0&&theoryPosts.every(post=>cache.urls.includes(new URL(post.image,origin+'/').href)));
+  const theoryImages=[...new Set(theoryPosts.flatMap(post=>post.images?.length?post.images:[post.image])),'assets/theory/muscle-meme.png'];
+  check('all theory screenshots, long-post pages and independent comic are explicitly precached',theoryPosts.length>0&&theoryImages.every(image=>cache.urls.includes(new URL(image,origin+'/').href)));
   await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
-  check('every theory screenshot decodes offline using the service-worker cache',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-card img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>=320))&&theoryPosts.every(post=>offlineResponses.some(r=>r.url===new URL(post.image,origin+'/').href&&r.fromServiceWorker&&r.status===200)));
+  const decoded=await p.evaluate(async paths=>Promise.all(paths.map(async path=>{const image=new Image();image.src=path;await image.decode();return image.naturalWidth>0;})),theoryImages);
+  check('every theory screenshot, gallery page and comic decodes offline using the service-worker cache',await p.locator('.theory-card img').count()===theoryPosts.length&&decoded.every(Boolean)&&theoryImages.every(image=>offlineResponses.some(r=>r.url===new URL(image,origin+'/').href&&r.fromServiceWorker&&r.status===200)));
   await p.screenshot({path:path.join(output,'offline-theory.png')});
   await context.close();await launch();await context.setOffline(true);p=await context.newPage();hook(p);response=await p.goto(origin+'/index.html',{waitUntil:'load'});
   check('independent browser restart can open source app while offline',response.fromServiceWorker()&&await p.locator('.brand strong').innerText()==='肌薄');
   check('offline-created draft survives independent browser restart',await saved(p)===offlineDraft&&await p.locator('.block').count()===6);
   await nav(p,'theory');await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
-  check('theory screenshots remain readable after an offline browser restart',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-card img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>=320))&&await saved(p)===offlineDraft);
+  check('theory screenshots remain readable after an offline browser restart',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-card img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>0))&&await saved(p)===offlineDraft);
   check('offline PWA run has no unhandled JavaScript errors',errors.length===0);check('offline PWA run makes no external requests',external.length===0);
   fs.writeFileSync(path.join(output,'pwa-evidence.json'),JSON.stringify({origin,registration,cacheName,declaredAssets:assets.length,cachedAssets:cache.urls,offlineResponses,httpCacheDisabled:true,offlineBrowserRestart:true},null,2));
 }

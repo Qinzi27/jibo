@@ -209,7 +209,67 @@
  .mobile-nav .nav-item>span{font-size:10px;letter-spacing:0}
 }
 
-/* 肌薄理论：本地原帖收藏与独立旁白。 */
-.theory-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--accent);color:var(--accent-ink);border-radius:24px;padding:30px 32px;overflow:hidden}.theory-sticker{display:inline-block;font:11px var(--mono);border:1px solid currentColor;border-radius:4px;padding:5px 9px;transform:rotate(-3deg);margin-bottom:17px}.theory-hero h2{font-size:36px;line-height:1.3;letter-spacing:-1.4px}.theory-hero p{font-size:12px;margin-top:14px;opacity:.8}.theory-seal{flex-shrink:0;width:116px;height:116px;border:2px dashed currentColor;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;transform:rotate(12deg);font-size:15px;line-height:1.2}.theory-seal b{font-size:22px}.theory-seal small{font:8px var(--mono);margin-top:9px}.theory-aside{display:flex;align-items:center;gap:15px;background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:13px 16px;margin:16px 0 24px}.theory-aside>span{font-size:11px;color:var(--accent);white-space:nowrap}.theory-aside p{flex:1;font-size:13px}.theory-aside .icon-btn{width:48px;height:48px;min-width:48px}.theory-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.theory-toolbar .filter-row{margin:0}.theory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}.theory-card{border:1px solid var(--line);background:var(--panel);border-radius:22px;overflow:hidden;min-width:0}.theory-card-meta{display:flex;align-items:center;gap:10px;padding:16px}.theory-author-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:13px;font-size:20px;font-weight:700}.theory-author-icon.sun{color:#38280a;background:#ffce79}.theory-author-icon.alan{color:var(--accent-ink);background:var(--accent)}.theory-card-meta strong{font-size:13px;display:block}.theory-card-meta small{font:10px var(--mono);color:var(--muted)}.theory-issue{margin-left:auto;color:var(--muted);font:10px var(--mono)}.theory-picture{display:block;width:100%;padding:0;background:#fff;position:relative;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.theory-picture img{display:block;width:100%;height:auto;max-height:460px;object-fit:contain;object-position:top}.theory-picture>span{display:flex;align-items:center;gap:5px;position:absolute;bottom:9px;right:9px;background:#141815e8;color:#d3f592;border:1px solid #ffffff30;border-radius:30px;padding:6px 10px;font-size:10px}.theory-picture>span svg{width:14px;height:14px}.theory-card-body{padding:18px}.theory-post-date{font:10px var(--mono);color:var(--muted);margin-bottom:8px}.theory-card-body h3{font-size:19px}.theory-card-body p{font-size:13px;color:var(--muted);margin:10px 0 15px;line-height:1.8}.theory-card-body p>span{display:inline-block;font-size:9px;border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-right:7px;color:var(--accent);vertical-align:1px}.theory-card-body .btn{min-height:48px}.theory-footnote{font-size:11px;color:var(--muted);margin:23px 0 18px;line-height:1.9}.theory-lightbox{background:#fff;border-radius:12px;overflow:auto;max-height:60dvh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.theory-lightbox img{display:block;width:100%;height:auto}.theory-lightbox.is-zoomed img{width:960px;max-width:none;min-width:100%}.theory-source-url{font:11px/1.8 var(--mono);color:var(--muted);word-break:break-all;user-select:text;margin-top:13px}.theory-lightbox~.modal-actions .btn{min-height:48px}
-@media(max-width:760px){.theory-hero{padding:24px 20px;gap:12px}.theory-hero h2{font-size:27px;letter-spacing:-1px}.theory-seal{width:76px;height:76px;font-size:11px}.theory-seal b{font-size:16px}.theory-seal small{font-size:6px;margin-top:6px}.theory-hero p{font-size:10px}.theory-aside{gap:10px;flex-wrap:wrap;padding:12px}.theory-aside>span{width:100%}.theory-aside p{font-size:12px;min-width:0}.theory-toolbar{align-items:flex-start;flex-direction:column}.theory-toolbar .filter-row{width:100%;gap:8px}.theory-toolbar .filter{font-size:12px;flex:1;padding:10px 8px;min-height:48px}.theory-grid{grid-template-columns:1fr;gap:18px}.theory-picture img{max-height:none}.theory-card-meta{padding:14px}.theory-card-body{padding:16px}.theory-lightbox{max-height:58dvh}.theory-lightbox~.modal-actions{flex-wrap:wrap}}
-@media(max-width:360px){.theory-hero h2{font-size:24px}.theory-seal{width:56px;height:56px}.theory-seal b{font-size:12px}.theory-sticker{font-size:9px}.theory-hero{padding:20px 15px}}
+/* 肌薄理论：本地原帖库、独立梗图与分段截图阅读。 */
+.brand-icon{overflow:hidden;background:transparent}
+.brand-icon>img{display:block;width:100%;height:100%;object-fit:cover}
+.theory-intro{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--panel2);border:1px solid var(--line);border-radius:17px;padding:12px 16px;margin-bottom:16px}
+.theory-intro>div{min-width:0}.theory-sticker{font:10px var(--mono);color:var(--accent)}
+.theory-intro p{font-size:13px;color:var(--muted);margin-top:5px}
+.theory-intro .icon-btn{width:48px;height:48px;min-width:48px;background:var(--panel)}
+.theory-meme-card{display:grid;grid-template-columns:minmax(0,1fr) 220px;align-items:center;gap:24px;background:var(--accent);color:var(--accent-ink);border-radius:20px;padding:18px 22px;margin:0 0 24px;overflow:hidden}
+.theory-meme-copy{min-width:0}.theory-meme-copy .eyebrow{color:inherit;opacity:.65;font-size:9px;letter-spacing:1px}
+.theory-meme-copy h2{font-size:25px;margin:7px 0}.theory-meme-copy p{font-size:12px;line-height:1.7}
+.theory-meme-copy small{display:block;font-size:10px;opacity:.7;margin-top:8px}
+.theory-meme-picture{display:block;position:relative;overflow:hidden;padding:0;border:1px solid #26341635;border-radius:13px;background:#fff;min-height:100px}
+.theory-meme-picture img{display:block;width:100%;aspect-ratio:902/510;object-fit:contain}
+.theory-meme-picture>span{display:flex;align-items:center;gap:4px;position:absolute;right:5px;bottom:5px;border-radius:20px;padding:4px 7px;font-size:10px;background:#141815e8;color:#d3f592}
+.theory-meme-picture>span svg{width:13px;height:13px}
+.theory-library{min-width:0}.theory-library-head{margin:0 0 14px;align-items:center}.theory-library-head h2{font-size:20px}.theory-library-head .tiny-note{margin-top:5px;letter-spacing:0}
+#theory-count{flex-shrink:0;text-align:right;font-size:11px}
+.theory-searchbar{margin-bottom:10px}.theory-searchbar input{font-size:14px}
+.theory-toolbar{display:grid;gap:4px;margin-bottom:17px;min-width:0}
+.theory-toolbar .filter-row{margin:0;width:100%;gap:8px;padding:3px 1px 6px;min-width:0}
+.theory-author-filters .filter{min-height:48px;min-width:88px}
+.theory-topic-filters .filter{min-height:48px;padding:10px 14px;font-size:12px;flex:0 0 auto}
+.theory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.theory-card{border:1px solid var(--line);background:var(--panel);border-radius:22px;overflow:hidden;min-width:0}
+.theory-card-meta{display:flex;align-items:center;gap:10px;padding:16px}
+.theory-author-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:13px;font-size:20px;font-weight:700;flex-shrink:0}
+.theory-author-icon.sun{color:#38280a;background:#ffce79}.theory-author-icon.alan{color:var(--accent-ink);background:var(--accent)}
+.theory-card-meta strong{font-size:13px;display:block}.theory-card-meta small{font:10px var(--mono);color:var(--muted)}
+.theory-issue{margin-left:auto;color:var(--muted);font:10px var(--mono);white-space:nowrap}
+.theory-picture{display:block;width:100%;padding:0;background:#fff;position:relative;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);min-height:140px}
+.theory-picture img{display:block;width:100%;height:auto;max-height:460px;object-fit:contain;object-position:top}
+.theory-picture>span{display:flex;align-items:center;gap:5px;position:absolute;bottom:9px;right:9px;background:#141815e8;color:#d3f592;border:1px solid #ffffff30;border-radius:30px;padding:6px 10px;font-size:10px}
+.theory-picture>span svg{width:14px;height:14px}.theory-card-body{padding:18px}
+.theory-post-date{font:10px/1.8 var(--mono);color:var(--muted);margin-bottom:8px}
+.theory-card-body h3{font-size:19px}.theory-card-body p{font-size:13px;color:var(--muted);margin:10px 0 15px;line-height:1.8}
+.theory-card-body p>span{display:inline-block;font-size:9px;border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-right:7px;color:var(--accent);vertical-align:1px}
+.theory-card-body .btn{min-height:48px}.theory-empty{min-height:200px}
+.theory-footnote{font-size:11px;color:var(--muted);margin:23px 0 18px;line-height:1.9}
+.theory-lightbox{background:#fff;border-radius:12px;overflow:auto;max-height:60dvh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.theory-lightbox img{display:block;width:100%;height:auto}.theory-lightbox.is-zoomed img{width:960px;max-width:none;min-width:100%}
+.theory-source-url{font:11px/1.8 var(--mono);color:var(--muted);word-break:break-all;user-select:text;margin-top:13px}
+.theory-lightbox~.modal-actions .btn{min-height:48px}
+.theory-gallery-nav{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center;margin-top:12px}
+.theory-gallery-nav .btn{min-height:48px;min-width:0;padding:10px 12px;font-size:12px}
+.theory-gallery-nav>span{font:11px var(--mono);color:var(--muted);white-space:nowrap}
+@media(max-width:760px){
+ .theory-intro{padding:9px 12px;margin-bottom:12px;gap:12px}.theory-intro p{font-size:12px;margin-top:3px}
+ .theory-meme-card{grid-template-columns:minmax(0,1fr) 122px;gap:15px;padding:15px 16px;margin-bottom:22px}.theory-meme-copy h2{font-size:21px;margin:5px 0}.theory-meme-copy .eyebrow{font-size:7px;letter-spacing:.5px}.theory-meme-copy p{font-size:11px}.theory-meme-copy small{font-size:9px;margin-top:6px}
+ .theory-meme-picture{border-radius:10px;min-height:88px}.theory-meme-picture img{min-height:88px}
+ .theory-library-head h2{font-size:19px}.theory-library-head .tiny-note{font-size:9px}#theory-count{font-size:10px}
+ .theory-author-filters .filter{flex:1;min-width:0;padding:10px 8px;font-size:12px}
+ .theory-topic-filters .filter{padding:10px 12px;font-size:11px}
+ .theory-grid{grid-template-columns:1fr;gap:18px}.theory-picture img{max-height:none}.theory-card-meta{padding:14px}.theory-card-body{padding:16px}
+ .theory-lightbox{max-height:55dvh}.theory-lightbox~.modal-actions{flex-wrap:wrap}
+}
+@media(max-width:360px){
+ .theory-meme-card{grid-template-columns:minmax(0,1fr) 104px;padding:14px;gap:12px}.theory-meme-copy h2{font-size:19px}.theory-meme-copy .eyebrow{display:none}
+ .theory-gallery-nav{gap:7px}.theory-gallery-nav .btn{font-size:11px;padding:10px 8px}
+}
+
+.theory-source-summary{font-size:12px;line-height:1.85;color:var(--muted);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin:14px 0}
+.theory-source-summary>span{display:inline-block;color:var(--ink);font-size:10px;margin-right:7px}
+.theory-card-body .theory-source-summary{font-size:12px;margin:12px 0}
+.theory-card-body .theory-source-summary>span{color:var(--ink)}
