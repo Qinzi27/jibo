@@ -6,6 +6,7 @@
   let EX = BASE_EX, PLANS = BASE_PLANS, EX_MAP = new Map(EX.map(e=>[e.id,e]));
   function refreshCatalog() { EX=C.allExercises(state,BASE_EX);PLANS=C.allPlans(state,BASE_PLANS);EX_MAP=new Map(EX.map(e=>[e.id,e])); }
   const STORE = 'lean-crew-local-v1';
+  const APP_VERSION = '1.5.0', RELEASES_URL = 'https://github.com/Qinzi27/jibo/releases';
   const $ = (selector, root = document) => root.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = (n, p = 1) => C.round(n, p).toLocaleString('zh-CN', {maximumFractionDigits:p});
@@ -154,12 +155,12 @@
   }
   function notePrefix(session) { const id=C.sessionPlanId(session); return id?'[肌薄计划:'+id+']\n':''; }
   function visibleNote(session) { return session.note.slice(notePrefix(session).length); }
-  function footer() { return '<footer class="footer"><span>LOCAL FIRST. ZERO ACCOUNT.</span><span>肌薄 · 把训练练成日常 · v1.4.0</span></footer>'; }
+  function footer() { return '<footer class="footer"><span>LOCAL FIRST. ZERO ACCOUNT.</span><span>肌薄 · 把训练练成日常 · v1.5.0</span></footer>'; }
   function nav(mobile = false) {
     return `<nav class="${mobile ? 'mobile-nav' : 'desktop-nav'}" aria-label="${mobile ? '底部导航' : '主导航'}">${[['home','dumbbell','训练'],['plans','calendar','计划'],['library','book','动作'],['theory','bolt','肌薄理论'],['food','food','饮食']].map(([id,ic,name]) => `<button type="button" class="nav-item ${tab===id?'active':''}" data-nav="${id}" aria-current="${tab===id?'page':'false'}">${icon(ic)}<span>${name}</span></button>`).join('')}</nav>`;
   }
   function header() {
-    return `<header class="topbar"><div class="brand"><div class="brand-icon"><img src="${esc(localImage('assets/icon-512.png'))}" alt="" width="44" height="44"></div><div><strong>肌薄</strong><div class="eyebrow">JIBO · FIND YOUR FORM</div></div></div>${nav()}<div class="top-actions"><span class="offline">本地离线</span><button type="button" class="icon-btn" data-action="settings" aria-label="设置与数据备份">${icon('settings')}</button></div></header>`;
+    return `<header class="topbar"><div class="brand"><div class="brand-icon"><img src="${esc(localImage('assets/icon-512.png'))}" alt="" width="44" height="44"></div><div><strong>肌薄</strong><div class="eyebrow">JIBO · FIND YOUR FORM</div></div></div>${nav()}<div class="top-actions"><span class="offline">数据在本机</span><button type="button" class="icon-btn settings-button" data-action="settings" aria-label="设置与数据备份${hasAvailableUpdate()?'，有软件更新':''}">${icon('settings')}<span class="update-badge" ${hasAvailableUpdate()?'':'hidden'} aria-hidden="true"></span></button></div></header>`;
   }
   function pageHead(eyebrow,title,desc = '') {
     return `<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1>${desc?`<p class="desc">${desc}</p>`:''}</div><div class="date-chip">${icon('calendar')}<span>${today().replaceAll('-','.')}</span></div></div>`;
@@ -170,6 +171,7 @@
     const pages = {home:homePage, plans:plansPage, library:libraryPage, theory:theoryPage, food:foodPage, settings:settingsPage};
     $('#app').innerHTML = `<div class="app-shell">${header()}${bootError?`<div class="storage-error">${esc(bootError)} <button class="btn btn-small" data-action="settings">打开设置</button></div>`:''}<main id="main">${pages[tab]()}</main>${footer()}</div>${nav(true)}`;
     if (tab === 'food') refreshNutritionPreview();
+    if (tab === 'settings') refreshUpdateUI();
     window.scrollTo({top:activeWorkout()?runtime.workoutScroll:(navScroll[navScrollKey()]||0),behavior:'instant'});
     syncBackState();syncKeyboard();
   }
@@ -500,8 +502,68 @@
     const s=state.sessions.find(v=>v.id===id);if(!s)return;
     modal(`<div class="eyebrow">WORKOUT ARCHIVE</div><h2>${s.date}</h2>`,`${s.blocks.map(b=>{const ex=EX_MAP.get(b.exerciseId);return `<div style="margin-bottom:18px"><h3>${esc(ex.name)}</h3><p class="tiny-note">${esc(ex.loadNote)}</p><div class="formula" style="margin-top:8px">${b.sets.map((v,i)=>`${i+1}. ${ex.mode==='time'?(v.seconds??'—')+'秒':(ex.mode==='weight'?(v.weight??'—')+' kg × ':'')+(v.reps??'—')+' 次'} ${v.done?'✓ 已完成':'○ 未完成'}`).map(esc).join('\n')}</div>${b.note?`<p class="small muted">备注：${esc(b.note)}</p>`:''}</div>`;}).join('')}${s.note?`<p class="small muted">本次备注：${esc(visibleNote(s))}</p>`:''}<div class="modal-actions"><button class="btn btn-danger" data-action="delete-session" data-id="${esc(id)}">删除</button><button class="btn btn-secondary" data-action="repeat-session" data-id="${esc(id)}">${icon('copy')}复制为新训练</button><button class="btn btn-primary" data-action="edit-session" data-id="${esc(id)}">编辑记录</button></div>`);
   }
+  let updateState={status:'idle',currentVersion:APP_VERSION,currentCode:0,autoCheck:false,latestVersion:'',latestCode:0,notes:'',progress:0,error:''};
+  let announcedUpdate='';
+  const updateMethods=['getUpdateState','checkForUpdate','downloadUpdate','installUpdate','cancelUpdate','setAutoUpdateCheck'];
+  function updateSupported() { return !!window.LeanNative&&updateMethods.every(method=>typeof window.LeanNative[method]==='function'); }
+  function hasAvailableUpdate() { return updateSupported()&&updateState.latestCode>updateState.currentCode&&['available','downloading','ready','installing','error'].includes(updateState.status); }
+  function normalizeUpdate(raw) {
+    const value=typeof raw==='string'?JSON.parse(raw):raw;
+    if(!value||typeof value!=='object'||Array.isArray(value)||!['idle','checking','available','downloading','ready','installing','upToDate','error'].includes(value.status))throw new Error('无法读取软件更新状态，请重试。');
+    const short=(text,max)=>typeof text==='string'?text.slice(0,max):'';
+    return {status:value.status,currentVersion:short(value.currentVersion,60)||APP_VERSION,currentCode:Math.max(0,Number(value.currentCode)||0),autoCheck:value.autoCheck===true,latestVersion:short(value.latestVersion,60),latestCode:Math.max(0,Number(value.latestCode)||0),notes:short(value.notes,12000),progress:Math.max(0,Math.min(100,Math.round(Number(value.progress)||0))),error:short(value.error,1000)};
+  }
+  function receiveUpdate(raw,notify=true) {
+    if(!updateSupported())return;
+    try{updateState=normalizeUpdate(raw);}catch(error){updateState={...updateState,status:'error',error:'无法读取软件更新状态，请重试。'};}
+    refreshUpdateUI();
+    if(notify&&updateState.status==='available'&&hasAvailableUpdate()&&announcedUpdate!==String(updateState.latestCode)){
+      announcedUpdate=String(updateState.latestCode);toast(`肌薄 ${updateState.latestVersion} 可更新，练完后到设置查看。`);
+    }
+  }
+  function readUpdateState(notify=false) {
+    if(!updateSupported())return;
+    try{receiveUpdate(window.LeanNative.getUpdateState(),notify);}catch(error){receiveUpdate({...updateState,status:'error',error:'暂时无法读取更新状态，请重试。'},false);}
+  }
+  window.LeanUpdateChanged=raw=>receiveUpdate(raw,true);
+  function callUpdate(method,...args) {
+    if(!updateSupported()){toast('请从 GitHub 发布页下载新版安卓安装包。');return;}
+    try{window.LeanNative[method](...args);readUpdateState(false);}catch(error){receiveUpdate({...updateState,status:'error',error:'更新操作未完成，请稍后重试。'},false);}
+  }
+  function updateStatusHTML() {
+    if(!updateSupported())return `<p class="small muted">${isNative()?'当前安卓版本尚未提供应用内更新，请从发布页下载安装新版。':'这里是网页预览。安卓安装包请从 GitHub 发布页下载，网页不会模拟版本检查。'}</p><div class="update-actions"><a class="btn btn-primary" href="${RELEASES_URL}" target="_blank" rel="noopener noreferrer">打开 GitHub 发布页 ${icon('arrow')}</a><button class="btn btn-secondary" data-action="update-copy-link">${icon('copy')}复制下载页链接</button></div>`;
+    const st=updateState,known=st.latestCode>st.currentCode&&!!st.latestVersion;
+    const messages={idle:'可手动检查 GitHub 上发布的新版本。',checking:'正在检查新版本……',available:'发现新版本，下载后即可安装。',downloading:st.progress>=100?'下载完成，正在校验安装包……':'正在下载安装包，训练记录仍保存在本机。',ready:'安装包已校验，可以开始安装。',installing:'请在安卓系统界面完成授权和安装确认。',upToDate:'当前已是最新版本。',error:'更新暂未完成，可以重试。'};
+    let actions='';
+    if(st.status==='checking')actions='<button class="btn btn-secondary" disabled>正在检查……</button>';
+    else if(st.status==='downloading')actions='<button class="btn btn-ghost" data-action="update-cancel">取消下载</button>';
+    else if(st.status==='ready')actions='<button class="btn btn-primary" data-action="update-install">立即安装</button>';
+    else if(st.status==='installing')actions='<button class="btn btn-secondary" disabled>等待系统安装确认</button>';
+    else if(st.status==='available')actions='<button class="btn btn-primary" data-action="update-download">下载更新</button><button class="btn btn-ghost" data-action="update-check">重新检查</button>';
+    else if(st.status==='error')actions=(known?'<button class="btn btn-primary" data-action="update-download">重新下载</button>':'')+'<button class="btn btn-secondary" data-action="update-check">重试检查</button>';
+    else actions='<button class="btn btn-primary" data-action="update-check">'+(st.status==='upToDate'?'再次检查':'检查更新')+'</button>';
+    return `${known?`<div class="update-version"><span>可用版本</span><strong>${esc(st.latestVersion)}</strong></div>`:''}<p class="update-status" id="update-status-message" role="status">${messages[st.status]}</p>${st.status==='downloading'?`<div class="update-progress-row"><progress id="update-progress" max="100" value="${st.progress}" aria-label="安装包下载进度"></progress><span id="update-progress-label">${st.progress}%</span></div>`:''}${known&&st.notes?`<details class="update-notes" open><summary>更新说明</summary><p>${esc(st.notes)}</p></details>`:''}${st.error?`<p class="update-error">${esc(st.error)}</p>`:''}<div class="update-actions">${actions}</div>${st.status==='ready'?'<p class="footnote">系统会再次询问安装许可。请直接覆盖安装，保留这台手机上的记录。</p>':''}`;
+  }
+  function softwareUpdateCard() {
+    const supported=updateSupported();
+    return `<section class="panel software-update" id="software-update"><div class="panel-title"><h3>软件更新</h3><span class="chip" id="update-current-version">当前 ${esc(updateState.currentVersion)}</span></div>${supported?`<div class="settings-line update-auto-row"><div><strong>每日自动检查</strong><p>打开 App 时，每天最多检查一次；下载和安装由你确认。</p></div><button class="update-auto-toggle" role="switch" aria-checked="${updateState.autoCheck}" aria-label="每日自动检查软件更新" id="update-auto-check" data-action="update-auto"><span>${updateState.autoCheck?'已开启':'已关闭'}</span></button></div>`:''}<div id="software-update-body"></div><p class="footnote">仅软件更新会连接 GitHub 检查版本、下载安装包。照片、计划与训练记录不会随更新请求上传。</p></section>`;
+  }
+  function refreshUpdateUI() {
+    const available=hasAvailableUpdate();
+    document.querySelectorAll('.settings-button').forEach(button=>{button.setAttribute('aria-label','设置与数据备份'+(available?'，有软件更新':''));const badge=$('.update-badge',button);if(badge)badge.hidden=!available;});
+    const body=$('#software-update-body');if(!body)return;
+    const label=$('#update-current-version');if(label)label.textContent='当前 '+updateState.currentVersion;
+    const toggle=$('#update-auto-check');if(toggle){toggle.setAttribute('aria-checked',String(updateState.autoCheck));$('span',toggle).textContent=updateState.autoCheck?'已开启':'已关闭';}
+    const signature=JSON.stringify([updateSupported(),updateState.status,updateState.latestVersion,updateState.latestCode,updateState.currentCode,updateState.notes,updateState.error]);
+    if(body.dataset.signature!==signature){
+      const focused=body.contains(document.activeElement)?document.activeElement?.dataset.action:null;
+      body.innerHTML=updateStatusHTML();body.dataset.signature=signature;
+      if(focused)body.querySelector(`[data-action="${focused}"]`)?.focus({preventScroll:true});
+    }
+    const progress=$('#update-progress');if(progress){progress.value=updateState.progress;$('#update-progress-label').textContent=updateState.progress+'%';$('#update-status-message').textContent=updateState.progress>=100?'下载完成，正在校验安装包……':'正在下载安装包，训练记录仍保存在本机。';}
+  }
   function settingsPage() {
-    return `${pageHead('MAKE IT YOURS','设置与备份。','按喜欢的方式记录，保管自己的训练数据。')}<div class="wide-content stack"><section class="panel"><form id="profile-form"><label class="field">你的昵称<input id="nickname" maxlength="30" value="${esc(state.profile.nickname)}" placeholder="训练者"></label><button class="btn btn-secondary btn-small" type="submit" style="margin-top:12px">保存昵称</button></form><div class="settings-line"><div><strong>每日鼓励 / Daily note</strong><p>在首页显示一句轻松的训练鼓励。</p></div><button class="toggle ${state.profile.fun?'on':''}" role="switch" aria-checked="${state.profile.fun}" aria-label="每日鼓励" data-action="toggle-fun"></button></div><div style="margin-top:16px"><strong class="small">主题 / Theme</strong><div class="theme-picker"><button class="theme-option ${state.profile.theme==='lean'?'active':''}" data-action="theme" data-theme="lean">🟢 薄肌绿</button><button class="theme-option ${state.profile.theme==='blond'?'active':''}" data-action="theme" data-theme="blond">🟡 暖阳金</button></div></div></section><section class="panel"><div class="panel-title"><h3>本地数据与备份</h3>${icon('lock')}</div><p class="notice">${isNative()?'动作图片、计划和训练记录保存在这台手机的应用私有空间；应用没有网络权限，已关闭自动云备份。选图只读取你选择的图片，保存压缩副本，不改动相册原图。':'网页版写入当前浏览器的本地存储。移动 HTML 文件、换浏览器、隐私模式或清理站点数据，都可能使记录不可见或丢失。'}<br>卸载或清理应用前，请先导出 JSON。完整 JSON 包含动作图片、计划与记录，请保存在本机并自行保管。</p><div class="row wrap" style="margin-top:17px"><button class="btn btn-primary" data-action="export-json">${icon('download')}完整 JSON 备份</button><button class="btn btn-secondary" data-action="export-csv">训练 CSV</button><button class="btn btn-ghost" data-action="import-json">${icon('upload')}导入 JSON</button></div>${damagedRaw?'<button class="btn btn-danger btn-wide" style="margin-top:12px" data-action="export-raw">先导出未解析的原始数据</button>':''}<input id="import-file" class="file-input" type="file" accept="application/json,.json" aria-label="选择 JSON 备份"><p class="footnote">导入前会验证格式并显示确认；确认后整体替换，不是合并。建议先导出当前数据。JSON 包含自建动作、照片和计划；CSV 仅含已归档训练，不能用于完整恢复。</p><div class="danger-zone"><button class="btn btn-danger btn-small" data-action="reset">清空所有本地记录</button><p class="footnote">包括自建动作照片和自己的计划，清空前请先备份。</p></div></section><section class="panel"><h3>这个项目是什么？</h3><div class="settings-line"><div><strong>肌薄 · JIBO</strong><p>v1.4.0 · 本地优先 · 没有账号、广告、追踪或自动上传。</p></div></div><div class="settings-line"><div><strong>围绕薄肌，均衡训练</strong><p>健身房和居家 A / B / C 计划，兼顾全身力量、肩背与核心，按自己的节奏记录进步。</p></div></div><div class="settings-line"><div><strong>图示与许可</strong><p>${EX.length} 张动作图是示意性质，不是专业动作教学。代码与原创动作示意图采用 MIT 许可；原帖、漫画及人物参考图标另见素材说明。</p></div></div><div class="settings-line"><div><strong>边界</strong><p>内置计划是一般模板，自建内容由你整理；不提供医疗诊断或体型预测。计时器不会在退出 App 后发送系统通知。</p></div></div><button class="btn btn-ghost btn-small" style="margin-top:16px" data-action="formulas">${icon('info')}计算口径</button></section></div>`;
+    return `${pageHead('MAKE IT YOURS','设置与备份。','按喜欢的方式记录，保管自己的训练数据。')}<div class="wide-content stack">${softwareUpdateCard()}<section class="panel"><form id="profile-form"><label class="field">你的昵称<input id="nickname" maxlength="30" value="${esc(state.profile.nickname)}" placeholder="训练者"></label><button class="btn btn-secondary btn-small" type="submit" style="margin-top:12px">保存昵称</button></form><div class="settings-line"><div><strong>每日鼓励 / Daily note</strong><p>在首页显示一句轻松的训练鼓励。</p></div><button class="toggle ${state.profile.fun?'on':''}" role="switch" aria-checked="${state.profile.fun}" aria-label="每日鼓励" data-action="toggle-fun"></button></div><div style="margin-top:16px"><strong class="small">主题 / Theme</strong><div class="theme-picker"><button class="theme-option ${state.profile.theme==='lean'?'active':''}" data-action="theme" data-theme="lean">🟢 薄肌绿</button><button class="theme-option ${state.profile.theme==='blond'?'active':''}" data-action="theme" data-theme="blond">🟡 暖阳金</button></div></div></section><section class="panel"><div class="panel-title"><h3>本地数据与备份</h3>${icon('lock')}</div><p class="notice">${isNative()?'动作图片、计划和训练记录保存在这台手机的应用私有空间；仅软件更新会联网，已关闭自动云备份。照片、计划和记录不会上传。选图只读取你选择的图片，保存压缩副本，不改动相册原图。':'网页版写入当前浏览器的本地存储。移动 HTML 文件、换浏览器、隐私模式或清理站点数据，都可能使记录不可见或丢失。'}<br>卸载或清理应用前，请先导出 JSON。完整 JSON 包含动作图片、计划与记录，请保存在本机并自行保管。</p><div class="row wrap" style="margin-top:17px"><button class="btn btn-primary" data-action="export-json">${icon('download')}完整 JSON 备份</button><button class="btn btn-secondary" data-action="export-csv">训练 CSV</button><button class="btn btn-ghost" data-action="import-json">${icon('upload')}导入 JSON</button></div>${damagedRaw?'<button class="btn btn-danger btn-wide" style="margin-top:12px" data-action="export-raw">先导出未解析的原始数据</button>':''}<input id="import-file" class="file-input" type="file" accept="application/json,.json" aria-label="选择 JSON 备份"><p class="footnote">导入前会验证格式并显示确认；确认后整体替换，不是合并。建议先导出当前数据。JSON 包含自建动作、照片和计划；CSV 仅含已归档训练，不能用于完整恢复。</p><div class="danger-zone"><button class="btn btn-danger btn-small" data-action="reset">清空所有本地记录</button><p class="footnote">包括自建动作照片和自己的计划，清空前请先备份。</p></div></section><section class="panel"><h3>这个项目是什么？</h3><div class="settings-line"><div><strong>肌薄 · JIBO</strong><p>v1.5.0 · 本地优先 · 没有账号、广告、追踪或自动上传。</p></div></div><div class="settings-line"><div><strong>围绕薄肌，均衡训练</strong><p>健身房和居家 A / B / C 计划，兼顾全身力量、肩背与核心，按自己的节奏记录进步。</p></div></div><div class="settings-line"><div><strong>图示与许可</strong><p>${EX.length} 张动作图是示意性质，不是专业动作教学。代码与原创动作示意图采用 MIT 许可；原帖、漫画及人物参考图标另见素材说明。</p></div></div><div class="settings-line"><div><strong>边界</strong><p>内置计划是一般模板，自建内容由你整理；不提供医疗诊断或体型预测。计时器不会在退出 App 后发送系统通知。</p></div></div><button class="btn btn-ghost btn-small" style="margin-top:16px" data-action="formulas">${icon('info')}计算口径</button></section></div>`;
   }
   function formulas() {
     modal('<div class="eyebrow">TRANSPARENT CALCULATIONS</div><h2>每个数，讲清楚。</h2>',`<h3>1. 负重次数 / Load × reps</h3><div class="formula" style="margin:12px 0">20 kg × 12 次 = 240 kg·次\n20 kg × 12 次 = 240 kg·次\n20 kg × 10 次 = 200 kg·次\n总和 = 240 + 240 + 200 = 680 kg·次</div><p class="small muted">只计有效且勾选“完成”的组。空白不是零；重量填 0 是明确的 0。自重动作不估算负重，计时项目另算秒数。不同动作或器械不应仅凭这个总和判断效果。</p><div class="divider"></div><h3>2. 标签营养 / Label arithmetic</h3><div class="formula" style="margin:12px 0">假设标签每100 mL：62 kcal、蛋白质3.4 g\n记录250 mL：份数 = 250 ÷ 100 = 2.5\n能量 = 2.5 × 62 = 155 kcal\n蛋白质 = 2.5 × 3.4 = 8.5 g\nkJ ÷ 4.184 = kcal</div><p class="small muted">这是示例，不是某产品的真实标签。内部保留未四舍五入数值，显示时再处理小数；展示值可能有末位差异。</p><div class="divider"></div><h3>3. 本周训练天数</h3><p class="small muted" style="margin-top:10px">从本地时间周一到今天，至少有一组有效完成且已归档的日期，计为一个训练日。同一天多次训练只计一天；草稿和未来记录不计入。每周 3 天只是参考节奏。</p>`);
@@ -599,7 +661,13 @@
     const a=button.dataset.action,{id,block:bid,set:sid,ex:exid}=button.dataset;
     const getBlock=next=>{const b=next.draft?.blocks.find(b=>b.id===bid);if(!b)throw new Error('找不到动作记录。');return b;};
     if(handleCustomAction(button))return;
-    if(a==='settings')go('settings');
+    if(a==='settings'){readUpdateState(false);go('settings');}
+    else if(a==='update-check')callUpdate('checkForUpdate');
+    else if(a==='update-download')callUpdate('downloadUpdate');
+    else if(a==='update-install')callUpdate('installUpdate');
+    else if(a==='update-cancel')callUpdate('cancelUpdate');
+    else if(a==='update-auto')callUpdate('setAutoUpdateCheck',!updateState.autoCheck);
+    else if(a==='update-copy-link')copyText(RELEASES_URL,'下载页链接已复制，可粘贴到手机浏览器打开。');
     else if(a==='close-modal')closeModal();
     else if(a==='confirm'){const fn=pendingModalAction;if(fn){fn();}}
     else if(a==='add-ex')addExercise(exid);
@@ -729,7 +797,9 @@
   window.LeanNativeResult=function(message){toast(String(message));};
   const lastPlanSession=state.draft || [...state.sessions].reverse().sort((a,b)=>b.date.localeCompare(a.date)).find(s=>C.sessionPlanId(s));
   planLocation=PLANS.find(p=>p.id===C.sessionPlanId(lastPlanSession))?.location || 'gym';
+  readUpdateState(false);
   render();
+  if(updateSupported()&&updateState.status==='available')receiveUpdate(updateState,true);
   if(timerEnd){tickTimer();if(timerEnd>Date.now())timerInterval=setInterval(tickTimer,500);}
   if('serviceWorker' in navigator && !isNative() && !window.LEAN_SINGLE_FILE && ['http:','https:'].includes(location.protocol)) {
     navigator.serviceWorker.register('./sw.js').catch(()=>{/* file mode and restrictive hosts need no service worker */});

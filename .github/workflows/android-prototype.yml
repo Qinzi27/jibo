@@ -42,6 +42,8 @@ jobs:
         run: python3 scripts/build_web.py
       - name: Unit tests
         run: node --test tests/core.test.cjs
+      - name: Updater trust boundary tests
+        run: python3 android/tests/run_tests.py
       - name: Build and verify signed APK
         run: python3 scripts/build_android.py
       - name: Store build artifact (not a release)
@@ -51,6 +53,7 @@ jobs:
           path: |
             dist/jibo-v*.apk
             dist/jibo-v*.apk.sha256
+            dist/jibo-update.json
             dist/ANDROID_BUILD_INFO.txt
           if-no-files-found: error
           retention-days: 14

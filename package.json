@@ -1,6 +1,6 @@
 {
   "name": "lean-crew-local",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "description": "肌薄：薄肌训练计划、逐组记录与本地进度追踪；无运行时依赖。",
   "license": "MIT",

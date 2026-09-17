@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.leancrew.local" android:versionCode="6" android:versionName="1.4.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.leancrew.local" android:versionCode="7" android:versionName="1.5.0">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
-    <!-- Deliberately NO INTERNET, storage, notification, camera, or microphone permissions. -->
+    <!-- Network is used only by the fixed GitHub release updater. No storage/camera/mic permissions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -16,6 +18,10 @@
         android:enableOnBackInvokedCallback="true">
         <provider android:name=".CameraFileProvider"
             android:authorities="app.leancrew.local.camera"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+        <provider android:name=".UpdateFileProvider"
+            android:authorities="app.leancrew.local.updates"
             android:exported="false"
             android:grantUriPermissions="true" />
         <activity android:name=".MainActivity"

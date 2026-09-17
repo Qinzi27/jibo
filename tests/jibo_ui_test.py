@@ -24,6 +24,7 @@ parser.add_argument('--pwa-only', action='store_true', help='Only test source we
 parser.add_argument('--mobile-only', action='store_true', help='Only test phone touch layout, workout navigation, timers and reduced viewport behavior; not a real Android keyboard')
 parser.add_argument('--custom-only', action='store_true', help='Only test custom movement photos and reusable plans; file input is automated, not a real camera or Android picker')
 parser.add_argument('--theory-only', action='store_true', help='Only test merged plans/progress navigation and local theory screenshot browsing; clipboard is intercepted, no external source page opens')
+parser.add_argument('--updates-only', action='store_true', help='Only test update UI with a mocked native bridge; no APK network request or Android installer is exercised')
 args = parser.parse_args()
 if not args.node:
     parser.error('Node.js is required; install it on PATH or pass --node PATH')
@@ -38,7 +39,7 @@ env = os.environ.copy()
 env.update(JIBO_ROOT=str(ROOT), JIBO_OUTPUT=str(args.output_dir.resolve()),
            JIBO_BASELINE='1' if args.baseline else '0', JIBO_PWA_ONLY='1' if args.pwa_only else '0',
            JIBO_MOBILE_ONLY='1' if args.mobile_only else '0', JIBO_CUSTOM_ONLY='1' if args.custom_only else '0',
-           JIBO_THEORY_ONLY='1' if args.theory_only else '0')
+           JIBO_THEORY_ONLY='1' if args.theory_only else '0', JIBO_UPDATES_ONLY='1' if args.updates_only else '0')
 if args.node_modules:
     env['NODE_PATH'] = args.node_modules
 if args.chromium:
@@ -51,7 +52,7 @@ const http = require('node:http');
 const assert = require('node:assert/strict');
 const {chromium} = require('playwright');
 const root=process.env.JIBO_ROOT, output=process.env.JIBO_OUTPUT;
-const baseline=process.env.JIBO_BASELINE==='1', pwaOnly=process.env.JIBO_PWA_ONLY==='1', mobileOnly=process.env.JIBO_MOBILE_ONLY==='1', customOnly=process.env.JIBO_CUSTOM_ONLY==='1', theoryOnly=process.env.JIBO_THEORY_ONLY==='1';
+const baseline=process.env.JIBO_BASELINE==='1', pwaOnly=process.env.JIBO_PWA_ONLY==='1', mobileOnly=process.env.JIBO_MOBILE_ONLY==='1', customOnly=process.env.JIBO_CUSTOM_ONLY==='1', theoryOnly=process.env.JIBO_THEORY_ONLY==='1', updatesOnly=process.env.JIBO_UPDATES_ONLY==='1';
 const store='lean-crew-local-v1';
 const checks=[], errors=[], external=[];
 let context, server;
@@ -88,6 +89,7 @@ async function main(){
   if(mobileOnly){await mobileChecks();return;}
   if(customOnly){await customChecks();return;}
   if(theoryOnly){await theoryChecks();return;}
+  if(updatesOnly){await updateChecks();return;}
   let p=await load();
   check('clean install contains no invented training records',(await state(p)).sessions.length===0);
   check('mobile home has no horizontal overflow',await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -200,6 +202,71 @@ async function planProgressChecks(){
   check('merged progress reads the same archive and saved weight after reload',await saved(p)===beforeRestart&&await p.locator('.history-card').count()===1&&await p.locator('.weight-number').innerText().then(t=>t.includes('66.1')));
   await p.screenshot({path:path.join(output,'plans-progress-mobile.png')});
   return {p,before:beforeRestart};
+}
+async function updateChecks(){
+  const setup=await planProgressChecks(),p=setup.p;
+  await p.evaluate(store=>{const s=JSON.parse(localStorage.getItem(store)),canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;canvas.getContext('2d').fillRect(0,0,8,8);s.customExercises[0].image=canvas.toDataURL('image/png');localStorage.setItem(store,JSON.stringify(s));},store);await p.reload();
+  const before=await saved(p);
+  await click(p,'settings');
+  check('web update card gives an honest fixed GitHub release fallback without a fake check action',await p.locator('#software-update a').getAttribute('href')==='https://github.com/Qinzi27/jibo/releases'&&await p.locator('[data-action="update-check"]').count()===0&&await p.locator('#software-update').innerText().then(t=>t.includes('网页不会模拟版本检查')));
+  await p.evaluate(()=>{window.__copiedUpdateLink='';Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>window.__copiedUpdateLink=text});});
+  await click(p,'update-copy-link');
+  check('web fallback copies only the fixed public releases URL',await p.evaluate(()=>window.__copiedUpdateLink==='https://github.com/Qinzi27/jibo/releases')&&await saved(p)===before);
+  await p.evaluate(()=>window.LeanUpdateChanged({status:'upToDate',currentVersion:'99.0',currentCode:999}));
+  check('web preview ignores native update events when no update capability exists',await p.locator('#software-update').innerText().then(t=>!t.includes('99.0')&&!t.includes('当前已是最新版本')));
+  await p.addInitScript(store=>{
+    window.__updateCalls=[];
+    window.__updateState={status:'idle',currentVersion:'1.5.0',currentCode:7,autoCheck:true,latestVersion:'',latestCode:0,notes:'',progress:0,error:''};
+    window.__emitUpdate=patch=>{Object.assign(window.__updateState,patch);window.LeanUpdateChanged({...window.__updateState});};
+    const invoke=(method,patch,args=[])=>{window.__updateCalls.push({method,args});window.__emitUpdate(patch);};
+    window.LeanNative={read:()=>localStorage.getItem(store),write:json=>{localStorage.setItem(store,json);return true;},setBackEnabled:()=>{},copyText:text=>window.__copiedUpdateLink=text,
+      getUpdateState:()=>JSON.stringify(window.__updateState),checkForUpdate:()=>invoke('checkForUpdate',{status:'checking',error:''}),downloadUpdate:()=>invoke('downloadUpdate',{status:'downloading',progress:0,error:''}),cancelUpdate:()=>invoke('cancelUpdate',{status:window.__updateState.latestCode>window.__updateState.currentCode?'available':'idle',progress:0,error:''}),installUpdate:()=>invoke('installUpdate',{status:'installing',error:''}),setAutoUpdateCheck:enabled=>invoke('setAutoUpdateCheck',{autoCheck:enabled},[enabled])};
+  },store);
+  await p.reload();
+  check('native bridge startup only reads update state and never triggers an automatic check from the page',await p.evaluate(()=>window.__updateCalls.length===0)&&await saved(p)===before);
+  const reps=p.locator('[data-field="reps"]').first();await reps.focus();
+  await p.evaluate(()=>window.__emitUpdate({status:'available',latestVersion:'1.6.0',latestCode:8,notes:'更顺手的训练记录。\n图片仍保存在本机。'}));
+  check('background update availability preserves workout input focus and never opens a modal',await reps.evaluate(e=>document.activeElement===e)&&await reps.inputValue()==='7'&&await p.locator('#modal').isHidden()&&await p.locator('.update-badge').isVisible()&&await saved(p)===before);
+  check('availability uses a quiet toast with an explicit settings destination',await p.locator('#toast').innerText().then(t=>t.includes('1.6.0')&&t.includes('设置')));
+  await click(p,'settings');
+  check('settings shows actual current version, update notes and enabled native daily preference',await p.locator('#update-current-version').innerText()==='当前 1.5.0'&&await p.locator('.update-version strong').innerText()==='1.6.0'&&await p.locator('.update-notes').innerText().then(t=>t.includes('图片仍保存在本机'))&&await p.locator('#update-auto-check').getAttribute('aria-checked')==='true');
+  await click(p,'update-auto');
+  check('daily check preference delegates the boolean without touching training JSON',await p.evaluate(()=>window.__updateCalls.at(-1).method==='setAutoUpdateCheck'&&window.__updateCalls.at(-1).args[0]===false)&&await p.locator('#update-auto-check').getAttribute('aria-checked')==='false'&&await saved(p)===before);
+  await click(p,'update-check');
+  check('manual check enters checking state and prevents duplicate check presses',await p.locator('#software-update-body button').first().isDisabled()&&await p.locator('#update-status-message').innerText().then(t=>t.includes('正在检查')));
+  await p.evaluate(()=>window.__emitUpdate({status:'upToDate',latestCode:7,latestVersion:'1.5.0'}));
+  check('only an explicit native up-to-date result shows success and removes the badge',await p.locator('#update-status-message').innerText()==='当前已是最新版本。'&&await p.locator('.update-badge').isHidden());
+  await p.evaluate(()=>window.__emitUpdate({status:'available',latestCode:8,latestVersion:'1.6.0',notes:'正常说明\n<img src=x onerror="window.__updateXSS=1">'}));
+  check('release notes are rendered as literal text rather than executable markup',await p.locator('.update-notes img').count()===0&&await p.locator('.update-notes').innerText().then(t=>t.includes('<img'))&&!await p.evaluate(()=>window.__updateXSS));
+  await click(p,'update-download');
+  check('download delegates to native and exposes progress plus cancellation, never install-before-validation',await p.evaluate(()=>window.__updateCalls.at(-1).method==='downloadUpdate')&&await p.locator('#update-progress').getAttribute('value')==='0'&&await p.locator('[data-action="update-cancel"]').isVisible()&&await p.locator('[data-action="update-install"]').count()===0);
+  await p.locator('#nickname').fill('还没有提交的昵称');await p.locator('#nickname').focus();
+  await p.evaluate(()=>{window.__updateNickname=document.querySelector('#nickname');window.__updateProgress=document.querySelector('#update-progress');window.__emitUpdate({progress:37});});
+  check('download progress updates keep existing DOM, unsaved text and keyboard focus',await p.locator('#update-progress').evaluate(e=>e.value===37&&e===window.__updateProgress)&&await p.locator('#nickname').evaluate(e=>e===window.__updateNickname&&e===document.activeElement)&&await p.locator('#nickname').inputValue()==='还没有提交的昵称'&&await saved(p)===before);
+  await p.evaluate(()=>window.__emitUpdate({progress:100}));
+  check('100 percent download remains a validation phase until native says ready',await p.locator('#update-status-message').innerText().then(t=>t.includes('正在校验'))&&await p.locator('[data-action="update-install"]').count()===0);
+  await click(p,'update-cancel');
+  check('cancelling a download returns to available without an error or data loss',await p.evaluate(()=>window.__updateCalls.at(-1).method==='cancelUpdate')&&await p.locator('[data-action="update-download"]').isVisible()&&await p.locator('.update-error').count()===0&&await saved(p)===before);
+  await p.evaluate(()=>window.__emitUpdate({status:'error',error:'网络暂时不可用。<b>请重试</b>'}));
+  check('download errors keep the release and offer retry with safe error text',await p.locator('.update-error').innerText()==='网络暂时不可用。<b>请重试</b>'&&await p.locator('.update-error b').count()===0&&await p.locator('[data-action="update-download"]').innerText()==='重新下载'&&await p.locator('[data-action="update-check"]').innerText()==='重试检查');
+  await click(p,'update-download');await p.evaluate(()=>window.__emitUpdate({status:'ready',progress:100,error:''}));
+  check('verified ready state offers explicit installation and preserves personal photos and plans',await p.locator('[data-action="update-install"]').innerText()==='立即安装'&&await p.locator('#update-status-message').innerText().then(t=>t.includes('已校验'))&&await saved(p)===before);
+  await click(p,'update-install');
+  check('installation delegates only after the explicit install button and awaits system confirmation',await p.evaluate(()=>window.__updateCalls.at(-1).method==='installUpdate')&&await p.locator('#update-status-message').innerText().then(t=>t.includes('安卓系统'))&&await p.locator('#software-update-body button').first().isDisabled());
+  await p.evaluate(()=>window.__emitUpdate({status:'ready',error:'尚未允许安装，请确认系统授权后重试。'}));
+  check('declined system permission retains the validated package and allows another install attempt',await p.locator('[data-action="update-install"]').isVisible()&&await p.locator('.update-error').innerText().then(t=>t.includes('系统授权'))&&await saved(p)===before);
+  for(const width of [320,390,768,1280]){
+    await p.setViewportSize({width,height:844});await p.locator('#software-update').scrollIntoViewIfNeeded();
+    check(`${width}px software update card fits the viewport and keeps usable controls`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)&&await p.locator('#software-update .btn,#update-auto-check').evaluateAll(es=>es.filter(e=>e.getBoundingClientRect().height).every(e=>e.getBoundingClientRect().height>=48)));
+  }
+  await p.setViewportSize({width:390,height:844});await p.locator('#software-update').scrollIntoViewIfNeeded();await p.screenshot({path:path.join(output,'software-update-ready.png')});
+  await p.evaluate(()=>window.LeanUpdateChanged('{broken'));
+  check('malformed update messages fail safely without replacing personal data',await p.locator('.update-error').innerText().then(t=>t.includes('JSON')||t.includes('更新'))&&await saved(p)===before);
+  const legacy=await context.newPage();hook(legacy);await legacy.addInitScript(store=>{window.LeanNative={read:()=>localStorage.getItem(store),write:json=>{localStorage.setItem(store,json);return true;},setBackEnabled:()=>{}};},store);await legacy.goto(origin+'/dist/lean-crew-offline.html');await click(legacy,'settings');
+  check('older native bridges without update methods stay usable and offer the release-page fallback',await legacy.locator('#software-update a').getAttribute('href')==='https://github.com/Qinzi27/jibo/releases'&&await legacy.locator('[data-action="update-check"]').count()===0&&await saved(legacy)===before);await legacy.close();
+  check('all update UI interactions preserve local training, plans, photos and weights exactly',await saved(p)===before);
+  check('update UI simulation has no unhandled JavaScript errors or external requests',errors.length===0&&external.length===0);
+  await p.close();
 }
 async function theoryChecks(){
   const {p,before}=await planProgressChecks();
@@ -541,7 +608,7 @@ async function plans(p){
 }
 (async()=>{let failure;try{await main()}catch(e){failure=String(e.stack||e);console.error(failure);process.exitCode=1;if(context){const page=context.pages().at(-1);if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});console.error('OVERFLOW:',await page.evaluate(()=>[...document.querySelectorAll('body *')].map(e=>({tag:e.tagName,cls:e.className,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,width:e.getBoundingClientRect().width})).filter(e=>e.right>innerWidth+1||e.left< -1)).catch(()=>[]));}}}finally{
   if(context)await context.close().catch(()=>{});if(server)await new Promise(resolve=>server.close(resolve));
-  const report={mode:pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':theoryOnly?'Chrome merged plan/progress and local theory screenshot flow; actual localStorage; offline rendering and enlargement; intercepted clipboard, no external navigation':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,failure:failure||null,not_verified:['Android compilation/signing/device install','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','Native or OS clipboard', 'file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
+  const report={mode:updatesOnly?'Chrome update UI with a mocked native bridge; localStorage remains real; no real network updater, package verification or Android installer':pwaOnly?'Chrome source web/ on isolated loopback; installed service worker; actual offline reload with HTTP cache disabled; offline browser restart':mobileOnly?'Chrome phone-sized CSS viewports on isolated loopback; actual persistent localStorage and independent browser restart; reduced viewport is not a real mobile keyboard':customOnly?'Chrome custom movement and plan flow; actual file-input image decode and compact raster storage; isolated persistent localStorage and browser restart; no real device camera or Android picker':theoryOnly?'Chrome merged plan/progress and local theory screenshot flow; actual localStorage; offline rendering and enlargement; intercepted clipboard, no external navigation':'Chrome loopback with real persistent localStorage, reload and independent browser restart; downloads intercepted',passed:checks.length,checks,unhandled_errors:errors,external_requests:external,failure:failure||null,not_verified:['Android compilation/signing/device install','Real GitHub updater network, APK validation and Android installer','Android AtomicFile and document picker','Android soft keyboard and device touch accuracy','Native or OS clipboard', 'file:// browser persistence',pwaOnly?'PWA OS installation/standalone launch integration':'PWA installation/service-worker cache','OS-level download saving']};
   fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:checks.length,output,failure:failure||null}));
 }})();
 '''

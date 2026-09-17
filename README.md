@@ -4,7 +4,15 @@
 
 ## 安装
 
-下载 [肌薄 v1.4.0 Android 测试版](dist/jibo-v1.4.0.apk)，传到手机后打开，按系统提示安装。可使用 [SHA-256 校验文件](dist/jibo-v1.4.0.apk.sha256) 核对安装包。
+下载 [肌薄 v1.5.0 Android 版](https://github.com/Qinzi27/jibo/releases/latest)，将 APK 传到手机后打开，按系统提示安装。可使用 [SHA-256 校验文件](dist/jibo-v1.5.0.apk.sha256) 核对安装包。
+
+## 应用更新
+
+首次从 v1.4 或更早版本升级，需要手动安装 v1.5 APK；保持原应用和记录，不要先卸载。此后可在「设置 → 软件更新」检查、下载并安装新版。
+
+默认在打开应用时每天最多检查一次，可关闭自动检查；发现新版不会自动下载或打断训练。点下载后显示进度，可随时取消。下载文件留在应用缓存，校验大小、SHA-256、包名、版本和签名信息通过后才交给 Android 安装器。系统可能要求允许肌薄安装应用，并由用户确认安装。
+
+更新只从本仓库的 GitHub Releases 获取更新清单和 APK，不发送训练、照片或其他本地记录。断网、下载失败或取消更新不影响训练记录。网页预览提供发布页入口；APK 更新在安卓端执行。
 
 ## 功能
 
@@ -18,7 +26,7 @@
 
 ## 本地与隐私
 
-图片在设备上压缩成副本，原图不变。动作图片、计划和训练记录保存在应用私有空间，应用没有网络权限，也没有上传功能。Android 自动云备份和设备迁移已关闭，系统选择器明确请求仅本机内容；厂商选择器是否遵守该限定尚需真机确认。手机相册自身的云同步设置独立于肌薄。
+图片在设备上压缩成副本，原图不变。动作图片、计划和训练记录保存在应用私有空间，仅更新模块使用联网权限，仍没有训练数据或图片上传功能。Android 自动云备份和设备迁移已关闭，系统选择器明确请求仅本机内容；厂商选择器是否遵守该限定尚需真机确认。手机相册自身的云同步设置独立于肌薄。
 
 JSON 备份包含自建动作、图片与计划。卸载或清空应用会删除本地记录，请先主动导出备份。导入是确认后的完整替换。数据为本机明文 JSON，未提供加密功能。
 
@@ -46,10 +54,11 @@ npm test
 npm run check
 ```
 
-Android 构建需要 Python 3、JDK 17+、Android SDK Platform 35 和 Build Tools 35.0.0。先使用 Android SDK Manager 安装工具并处理许可，再运行：
+Android 构建需要 Python 3、JDK 17+、Android SDK Platform 35 和 Build Tools 35.0.0。JVM 更新规则测试也使用这个 JDK，可通过 `JAVA_HOME` 指定。先使用 Android SDK Manager 安装工具并处理许可，再运行：
 
 ```bash
 python3 scripts/build_android.py --check-only
+python3 android/tests/run_tests.py
 python3 scripts/build_android.py
 ```
 
@@ -67,9 +76,17 @@ python3 scripts/build_android.py
 python3 tests/jibo_ui_test.py --custom-only
 ```
 
-浏览器测试使用独立临时配置与随机本机端口，不使用日常浏览器记录。其他测试范围可通过 `--mobile-only`、`--pwa-only`、`--theory-only` 选择，省略范围参数运行主要界面回归。
+浏览器测试使用独立临时配置与随机本机端口，不使用日常浏览器记录。`--updates-only` 使用模拟原生桥验证界面状态，不代表真实安卓安装器测试。其他测试范围可通过 `--mobile-only`、`--pwa-only`、`--theory-only`、`--updates-only` 选择，省略范围参数运行主要界面回归。
 
-v1.4.0 已通过 63 项核心测试与 261 项独立浏览器检查（主要界面 97、手机布局 38、自建动作和计划 42、理论与合并导航 62、PWA 离线 22）。APK 编译、对齐与签名验证通过。尚未连接 Android 真机或模拟器验证系统选图、拍照、原生持久化、软键盘及覆盖安装。
+v1.5.0 通过 73 项原生更新规则 JVM 测试、63 项核心测试与 157 项浏览器检查（更新界面专项 38、主要界面 97、PWA 离线 22）。更新专项使用模拟原生桥，检查取消、重试、安装授权返回、输入焦点和完整本地记录保留。APK 编译、对齐与签名验证通过，签名与旧版一致。尚未连接 Android 真机或模拟器验证系统选图、拍照、原生持久化、软键盘及覆盖安装。
+
+## 发布更新
+
+构建脚本会同时生成 APK、`.apk.sha256` 与 `dist/jibo-update.json`。每次更新必须提高 Android `versionCode`，保持 `app.leancrew.local` 包名和相同签名密钥，并同步网页与 package.json 的版本。
+
+可用 `--notes-file 文件路径` 写入这次更新说明（UTF-8 文本，最多 4000 字）；`--output` 可改变输出目录，但 APK 文件名应保持 `jibo-v版本号.apk`。
+
+将这三个文件上传至同一个公开的 GitHub Release，以 `v版本号` 作为标签；发布为正式 Release，并设为 Latest。应用使用固定的 `https://github.com/Qinzi27/jibo/releases/latest/download/jibo-update.json` 地址检查更新。清单中的 APK URL 必须指向本仓库该版本，不能修改哈希后复用别的 APK。原始私钥始终保留在本机或仓库 secrets 中，不放入源码或发布附件。
 
 ## 目录与许可
 

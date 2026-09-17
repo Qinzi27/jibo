@@ -6,6 +6,7 @@ SDK licenses are accepted by the user in Android Studio / sdkmanager, not silent
 from __future__ import annotations
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -23,6 +24,7 @@ parser.add_argument('--build-tools', default='35.0.0')
 parser.add_argument('--platform', default='35')
 parser.add_argument('--check-only', action='store_true', help='Check prerequisites without building')
 parser.add_argument('--output', type=Path, help='APK path (default: dist/jibo-v<version>.apk)')
+parser.add_argument('--notes-file', type=Path, help='UTF-8 update notes (at most 4000 characters) for jibo-update.json')
 args = parser.parse_args()
 
 main=ROOT/'android/app/src/main'
@@ -87,6 +89,10 @@ except (OSError,subprocess.CalledProcessError) as error:
 print('Java version:',(java_check.stderr + java_check.stdout).splitlines()[0])
 print('App:',app_id,'Version:',version,'/',version_code)
 if args.check_only: raise SystemExit(0)
+notes = args.notes_file.read_text(encoding='utf-8').strip() if args.notes_file else '新增应用内检查更新、下载校验和系统确认安装；训练记录与照片仍保存在本机。'
+if len(notes) > 4000: raise SystemExit('Update notes exceed the 4000-character limit.')
+if args.output and args.output.name != f'jibo-v{version}.apk':
+    raise SystemExit(f'Update releases require the APK filename jibo-v{version}.apk; --output may choose its directory.')
 
 out=ROOT/'build/android-direct'
 if out.exists():shutil.rmtree(out)
@@ -149,6 +155,14 @@ with zipfile.ZipFile(output) as z:
     if any(n.lower().endswith(('.keystore','.jks')) for n in entries):
         raise SystemExit('Signing file found inside APK; refusing delivery.')
 sha=hashlib.sha256(output.read_bytes()).hexdigest()
+update={
+    'schemaVersion': 1, 'packageName': app_id, 'versionName': version,
+    'versionCode': int(version_code), 'minSdk': int(min_sdk),
+    'apkUrl': f'https://github.com/Qinzi27/jibo/releases/download/v{version}/{output.name}',
+    'sha256': sha, 'size': output.stat().st_size, 'notes': notes,
+}
+(ROOT/'dist').mkdir(parents=True, exist_ok=True)
+(ROOT/'dist/jibo-update.json').write_text(json.dumps(update, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
 info=f'''Build produced: {output.name}
 SHA256: {sha}
 App ID: {app_id}
@@ -156,7 +170,10 @@ Version: {version} / versionCode {version_code}
 Minimum Android API: {min_sdk}; target: {target_sdk}
 Signing: {'custom' if custom else 'local prototype/debug key'}
 Signing certificate SHA256: {certificate.group(1).lower()}
-No third-party Android runtime libraries. No Internet permission.
+No third-party Android runtime libraries. INTERNET is used only for the fixed GitHub release updater.
+REQUEST_INSTALL_PACKAGES opens Android's user-confirmed installer; no silent installation.
+WebView network loads remain blocked. Training records and photos are never sent by the updater.
+Update metadata: jibo-update.json (actual signed APK byte size and SHA256).
 Build + signature verification are NOT device installation/functional testing.
 Keep the same signing key for updates. Back up app data before uninstalling.
 '''

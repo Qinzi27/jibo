@@ -44,7 +44,7 @@ import java.util.Map;
 
 /**
  * Minimal offline Android shell. All HTML/CSS/JS/images ship in assets/www.
- * No third-party runtime library; no Internet permission; no analytics.
+ * No third-party runtime library or analytics. Only UpdateManager can contact GitHub.
  * Successful compilation does not replace installation and functional device testing.
  */
 public final class MainActivity extends Activity {
@@ -71,11 +71,15 @@ public final class MainActivity extends Activity {
     private ActionMode selectionMode;
     private boolean webReady;
     private String pendingNotice;
+    private UpdateManager updates;
+    private final UpdateManager.Listener updateListener = this::dispatchUpdateState;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         store = new AtomicFile(new File(getFilesDir(), "lean-crew-v1.json"));
         runtime = getSharedPreferences("jibo-runtime", Context.MODE_PRIVATE);
+        updates = UpdateManager.get(this);
+        updates.attach(updateListener);
         CameraFileProvider.pruneOldFiles(this);
         if (savedInstanceState != null) {
             String capture = savedInstanceState.getString("pendingCapture");
@@ -111,6 +115,7 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccessFromFileURLs(false);
         settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setBlockNetworkLoads(true); // Native updater permission never opens WebView networking.
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
@@ -121,6 +126,7 @@ public final class MainActivity extends Activity {
                 if (START.equals(url)) {
                     webReady = true;
                     dispatchKeyboardState();
+                    dispatchUpdateState(updates.state());
                     if (pendingNotice != null) {
                         String text = pendingNotice;
                         pendingNotice = null;
@@ -238,7 +244,8 @@ public final class MainActivity extends Activity {
         // Never let a third-party picker point WebView at an app-private file.
         if (uri == null || !"content".equals(uri.getScheme()) || uri.getAuthority() == null
                 || uri.getUserInfo() != null || uri.getPort() != -1
-                || CameraFileProvider.AUTHORITY.equals(uri.getAuthority())) return false;
+                || CameraFileProvider.AUTHORITY.equals(uri.getAuthority())
+                || UpdateFileProvider.AUTHORITY.equals(uri.getAuthority())) return false;
         try (InputStream input = getContentResolver().openInputStream(uri)) { return input != null; }
         catch (Exception error) { return false; }
     }
@@ -277,6 +284,12 @@ public final class MainActivity extends Activity {
 
     /** Exposed only to the hard-allowlisted appassets origin. Never add remote navigation. */
     public final class LocalBridge {
+        @JavascriptInterface public String getUpdateState() { return updates.state(); }
+        @JavascriptInterface public void checkForUpdate() { updates.check(); }
+        @JavascriptInterface public void downloadUpdate() { updates.download(); }
+        @JavascriptInterface public void cancelUpdate() { updates.cancel(); }
+        @JavascriptInterface public void setAutoUpdateCheck(boolean enabled) { updates.setAutoCheck(enabled); }
+        @JavascriptInterface public void installUpdate() { runOnUiThread(() -> updates.install(MainActivity.this)); }
         @JavascriptInterface public String read() {
             synchronized (storeLock) {
                 if (!store.getBaseFile().exists() && !new File(store.getBaseFile().getPath()+".bak").exists()) return "";
@@ -354,6 +367,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent intent) {
         super.onActivityResult(request, result, intent);
+        if (updates != null && updates.onActivityResult(this, request, result)) return;
         if (request == REQUEST_IMPORT) {
             Uri uri = result == RESULT_OK && intent != null ? intent.getData() : null;
             if (uri != null && !isDocumentUri(uri)) { uri = null; notifyWeb("无法读取所选文件，请重新选择。"); }
@@ -398,6 +412,11 @@ public final class MainActivity extends Activity {
             web.evaluateJavascript("window.LeanNativeResult && window.LeanNativeResult(" + JSONObject.quote(text) + ")", null);
         });
     }
+    private void dispatchUpdateState(String json) {
+        if (web == null || !webReady || isFinishing() || isDestroyed()) return;
+        // JSONObject's string quoting also escapes line separators for evaluateJavascript.
+        web.evaluateJavascript("window.LeanUpdateChanged && window.LeanUpdateChanged(JSON.parse(" + JSONObject.quote(json) + "))", null);
+    }
     private void updateBackCallback(boolean enabled) {
         if (Build.VERSION.SDK_INT < 33 || backCallback == null || isDestroyed()) return;
         if (enabled && !backCallbackRegistered) {
@@ -432,15 +451,18 @@ public final class MainActivity extends Activity {
         super.onSaveInstanceState(state);
     }
     @Override protected void onPause() {
+        if (updates != null) updates.onPause(this);
         if (web != null) web.onPause();
         super.onPause();
     }
     @Override protected void onResume() {
         super.onResume();
         if (web != null) web.onResume();
+        if (updates != null) updates.onResume(this);
     }
     @Override protected void onDestroy() {
         updateBackCallback(false);
+        if (updates != null) updates.detach(updateListener);
         if (isFinishing()) discardCapture();
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         if (web != null) {

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "packageName": "app.leancrew.local",
+  "versionName": "1.5.0",
+  "versionCode": 7,
+  "minSdk": 26,
+  "apkUrl": "https://github.com/Qinzi27/jibo/releases/download/v1.5.0/jibo-v1.5.0.apk",
+  "sha256": "00711e317ea11088803db058cd9406fb890f6f81da97ef692c3033206d660b52",
+  "size": 3191393,
+  "notes": "新增应用内检查更新、下载校验和系统确认安装；训练记录与照片仍保存在本机。"
+}
