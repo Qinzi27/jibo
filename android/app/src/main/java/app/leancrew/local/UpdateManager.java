@@ -97,7 +97,7 @@ public final class UpdateManager {
                     } catch (Exception failure) {
                         synchronized (this) {
                             if (token != generation) return;
-                            clearDownloaded(); status = "available"; error = "已下载文件需要重新下载。"; publish();
+                            clearDownloaded(); status = "available"; error = "安装包已失效，请重新下载。"; publish();
                         }
                     }
                 });
@@ -241,7 +241,7 @@ public final class UpdateManager {
                     verifyingInstall = false;
                     Activity target = owner.get();
                     if (target == null || target.isFinishing() || target.isDestroyed() || foreground.get() != target) {
-                        status = "ready"; error = "安装包已就绪，回到应用后点继续安装。"; publish(); return;
+                        status = "ready"; error = "安装包已下载，返回应用点继续安装。"; publish(); return;
                     }
                     launchInstallerOrPermission(target);
                 }});
@@ -279,7 +279,7 @@ public final class UpdateManager {
             installerOpen = false; awaitingPermission = false;
             app.revokeUriPermission(UpdateFileProvider.APK_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION);
             preferences.edit().putBoolean("awaitingPermission", false).apply();
-            status = "ready"; error = "无法打开系统安装器，请确认手机允许安装此应用的更新后重试。"; publish();
+            status = "ready"; error = "无法打开系统安装器，请检查安装权限后重试。"; publish();
         }
     }
 
@@ -308,7 +308,7 @@ public final class UpdateManager {
         awaitingPermission = false;
         preferences.edit().putBoolean("awaitingPermission", false).apply();
         if (app.getPackageManager().canRequestPackageInstalls()) startInstallValidation(activity);
-        else { status = "ready"; error = "尚未允许此来源安装；安装包已保留，可再次点安装。"; publish(); }
+        else { status = "ready"; error = "未开启安装权限。安装包已保留，可重试。"; publish(); }
     }
     public synchronized boolean onActivityResult(Activity activity, int request, int result) {
         if (request == REQUEST_PERMISSION) {
@@ -323,7 +323,7 @@ public final class UpdateManager {
             // this process is re-verifying its cache. Do not invalidate that active job.
             if (!"checking".equals(status) && !"downloading".equals(status) && !verifyingInstall)
                 status = ready ? "ready" : "idle";
-            error = result == Activity.RESULT_OK ? "系统已处理安装；若版本未改变，可再次尝试。" : "安装未完成，安装包已保留，可再次点安装。";
+            error = result == Activity.RESULT_OK ? "已返回应用。若版本未变，可重新安装。" : "安装未完成，安装包已保留，可重试。";
             publish(); return true;
         }
         return false;

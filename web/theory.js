@@ -1,4 +1,4 @@
-/* Public-source excerpts, locally bundled. No remote runtime requests. */
+/* Verbatim public-source excerpts, locally bundled. No remote runtime requests. */
 window.JIBO_THEORY_POSTS = [
   {
     "id": "sun-version-answer",
@@ -10,10 +10,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/sunyuchentron/status/2097637933604077901",
     "image": "assets/theory/sun-version-answer.png",
     "category": "meme",
-    "title": "版本答案，先收藏了",
+    "title": "版本答案",
     "excerpt": "版本答案",
-    "summary": "孙宇晨公开发布的黄毛形象梗图。",
-    "commentary": "版本已经更新，我的哑铃还在加载。",
     "cropped": false
   },
   {
@@ -26,10 +24,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099960618229064044",
     "image": "assets/theory/alan-lean-diet.png",
     "category": "food",
-    "title": "薄肌食堂，开饭",
+    "title": "薄肌饮食",
     "excerpt": "薄肌饮食",
-    "summary": "作者展示自己的餐盘，并表达个人饮食主张。",
-    "commentary": "饭已经看会了，下一步是放下手机去吃饭。",
     "cropped": true
   },
   {
@@ -42,10 +38,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/sunyuchentron/status/2097630500433358883",
     "image": "assets/theory/sun-theory-intro.png",
     "category": "theory",
-    "title": "薄肌，被写进版本说明",
+    "title": "孙学，黄毛，薄肌才是版本答案",
     "excerpt": "孙学，黄毛，薄肌才是版本答案",
-    "summary": "孙宇晨表示会把黄毛与薄肌的话题纳入自己的讨论体系。这里保留短句截图，完整表述可由出处查看。",
-    "commentary": "理论先入库，肌肉等下班。",
     "cropped": true
   },
   {
@@ -58,10 +52,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/sunyuchentron/status/2097637414391230567",
     "image": "assets/theory/sun-theory-access.png",
     "category": "theory",
-    "title": "从后天行动聊参与门槛",
+    "title": "孙学，黄毛，薄肌，是正能量的，理由很简单：门槛。",
     "excerpt": "孙学，黄毛，薄肌，是正能量的，理由很简单：门槛。",
-    "summary": "作者把话题落在后天行动与参与门槛，强调愿意尝试。原帖对结果的概括属于作者个人观点。",
-    "commentary": "入场门槛找到了，健身房门卡还没找到。",
     "cropped": true
   },
   {
@@ -74,10 +66,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/sunyuchentron/status/2097637277375820038",
     "image": "assets/theory/sun-theory-body.png",
     "category": "theory",
-    "title": "身体，也有自己的方法论",
+    "title": "薄肌是孙学在身体上的实现。",
     "excerpt": "薄肌是孙学在身体上的实现。",
-    "summary": "作者用投入与维护成本比较体型选择，把薄肌纳入自己的生活方法论。此处是观点摘录，不是训练效果证明。",
-    "commentary": "脑内方法论，手里两只铃。",
     "cropped": true
   },
   {
@@ -90,10 +80,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099554929413390513",
     "image": "assets/theory/alan-control-variables.png",
     "category": "theory",
-    "title": "先把能改变的部分做好",
+    "title": "把所有能控制的变量拉满，打出最高 EV。",
     "excerpt": "把所有能控制的变量拉满，打出最高 EV。",
-    "summary": "邵艾伦将薄肌理论解释为改善训练、饮食、自律和作息等可调整的条件，而非保证某一种外貌。",
-    "commentary": "基因先不管，今天这组归我管。",
     "cropped": true
   },
   {
@@ -106,10 +94,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2095281564330647652",
     "image": "assets/theory/alan-victory.png",
     "category": "meme",
-    "title": "先喊口号，再做一组",
+    "title": "薄肌代表着胜利",
     "excerpt": "薄肌代表着胜利",
-    "summary": "作者发布的薄肌口号。本地仅收录文字部分。",
-    "commentary": "口号很响，动作也别静音。",
     "cropped": true
   },
   {
@@ -122,10 +108,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099391436647219350",
     "image": "assets/theory/alan-ucla-vlog.png",
     "category": "training",
-    "title": "UCLA，训练现场打卡",
+    "title": "UCLA薄肌vlog",
     "excerpt": "UCLA薄肌vlog",
-    "summary": "健身房训练日常的视频原帖。离线收录标题和封面节选；完整视频可复制出处到浏览器查看。",
-    "commentary": "视频已看，热身还没开始。",
     "cropped": true
   },
   {
@@ -138,10 +122,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099589432311726232",
     "image": "assets/theory/alan-caffeine.png",
     "category": "food",
-    "title": "饮品，也被编入话题了",
+    "title": "摄入适量咖啡因对练薄肌真的有帮助！",
     "excerpt": "摄入适量咖啡因对练薄肌真的有帮助！",
-    "summary": "记录作者关于训练饮品的个人看法。第二张是原帖饮料照片节选。",
-    "commentary": "罐子打开了，训练记录也打开。",
     "cropped": true,
     "images": [
       "assets/theory/alan-caffeine.png",
@@ -158,10 +140,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099318932217929873",
     "image": "assets/theory/alan-food-opinion.png",
     "category": "food",
-    "title": "关于饮食的一句争论",
+    "title": "中餐饮食习惯是中国人获得薄肌最大的阻碍。",
     "excerpt": "中餐饮食习惯是中国人获得薄肌最大的阻碍。",
-    "summary": "作者对饮食习惯与体型作出的概括性判断，作为话题存档展示，不是本应用的饮食结论。",
-    "commentary": "评论区先休息，自己的餐盘自己记。",
     "cropped": true
   },
   {
@@ -174,10 +154,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099914697021743324",
     "image": "assets/theory/alan-meal-reply.png",
     "category": "food",
-    "title": "一餐热量，评论区接着聊",
+    "title": "一顿卡路里够了啊",
     "excerpt": "一顿卡路里够了啊",
-    "summary": "作者在一餐份量话题中的回复节选；图片只包含他的回复，不将这句话换算成个人热量目标。",
-    "commentary": "别用一句回复，代替一张食品标签。",
     "cropped": true
   },
   {
@@ -190,10 +168,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2100024196957192257",
     "image": "assets/theory/alan-blond-thinking.png",
     "category": "meme",
-    "title": "黄毛思维，开课了",
+    "title": "请严肃学习黄毛思维🙏",
     "excerpt": "请严肃学习黄毛思维🙏",
-    "summary": "黄毛话题的视频原帖。离线仅展示标题与视频封面，完整视频请查看出处。",
-    "commentary": "头发可以先不染，计划可以先保存。",
     "cropped": true
   },
   {
@@ -206,10 +182,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2099749485681508736",
     "image": "assets/theory/alan-thin-club.png",
     "category": "meme",
-    "title": "薄肌俱乐部，今日迎新",
+    "title": "正式加入薄肌俱乐部🙏",
     "excerpt": "正式加入薄肌俱乐部🙏",
-    "summary": "作者发布的俱乐部迎新帖。原帖配图带有 Made with AI 标记，不能据此判断人物实际体型。",
-    "commentary": "本应用的入会仪式：给动作起个名字。",
     "cropped": true
   },
   {
@@ -222,10 +196,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2098835662242017478",
     "image": "assets/theory/alan-fashion-list.png",
     "category": "meme",
-    "title": "薄肌，进了时尚清单",
-    "excerpt": "新时代时尚单品；1.薄肌；2.gpt会员",
-    "summary": "作者用一张玩梗清单把薄肌与线上工具、账号和语言能力等并列。截图节选清单开头。",
-    "commentary": "新单品已收藏，旧运动鞋先穿上。",
+    "title": "新时代时尚单品\n1.薄肌\n2.gpt会员",
+    "excerpt": "新时代时尚单品\n1.薄肌\n2.gpt会员",
     "cropped": true
   },
   {
@@ -238,10 +210,8 @@ window.JIBO_THEORY_POSTS = [
     "sourceUrl": "https://x.com/AlanShao111/status/2098887661918536127",
     "image": "assets/theory/alan-room-meme.png",
     "category": "meme",
-    "title": "理想房间，哑铃已就位",
+    "title": "顶级男人终极生活形态",
     "excerpt": "顶级男人终极生活形态",
-    "summary": "作者转发的房间布置梗图，画面包含电脑、床垫与训练器材。",
-    "commentary": "从床到哑铃，今天通勤两步。",
     "cropped": true
   }
 ];

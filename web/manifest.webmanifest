@@ -2,7 +2,7 @@
   "id": "./",
   "name": "肌薄",
   "short_name": "肌薄",
-  "description": "围绕薄肌目标的训练计划、逐组记录与本地进度追踪。",
+  "description": "训练计划、训练记录、薄肌理论。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

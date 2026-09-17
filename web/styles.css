@@ -42,7 +42,6 @@
 .principle strong{display:block;font-size:12px;font-weight:600}
 .principle small{display:block;font-size:11px;color:var(--muted);margin-top:5px}
 .today-stats{border:0;margin:0;padding:0}
-.daily-quote{font-size:12px;line-height:1.9;color:var(--muted);margin-top:20px;border-top:1px solid var(--line);padding-top:16px}
 .plan-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:28px 0}
 .location-switch{display:flex;gap:4px;background:var(--panel);padding:5px;border:1px solid var(--line);border-radius:14px}
 .location-switch button{padding:11px 23px;border-radius:10px;min-height:42px;color:var(--muted);font-size:13px}
@@ -212,18 +211,6 @@
 /* 肌薄理论：本地原帖库、独立梗图与分段截图阅读。 */
 .brand-icon{overflow:hidden;background:transparent}
 .brand-icon>img{display:block;width:100%;height:100%;object-fit:cover}
-.theory-intro{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--panel2);border:1px solid var(--line);border-radius:17px;padding:12px 16px;margin-bottom:16px}
-.theory-intro>div{min-width:0}.theory-sticker{font:10px var(--mono);color:var(--accent)}
-.theory-intro p{font-size:13px;color:var(--muted);margin-top:5px}
-.theory-intro .icon-btn{width:48px;height:48px;min-width:48px;background:var(--panel)}
-.theory-meme-card{display:grid;grid-template-columns:minmax(0,1fr) 220px;align-items:center;gap:24px;background:var(--accent);color:var(--accent-ink);border-radius:20px;padding:18px 22px;margin:0 0 24px;overflow:hidden}
-.theory-meme-copy{min-width:0}.theory-meme-copy .eyebrow{color:inherit;opacity:.65;font-size:9px;letter-spacing:1px}
-.theory-meme-copy h2{font-size:25px;margin:7px 0}.theory-meme-copy p{font-size:12px;line-height:1.7}
-.theory-meme-copy small{display:block;font-size:10px;opacity:.7;margin-top:8px}
-.theory-meme-picture{display:block;position:relative;overflow:hidden;padding:0;border:1px solid #26341635;border-radius:13px;background:#fff;min-height:100px}
-.theory-meme-picture img{display:block;width:100%;aspect-ratio:902/510;object-fit:contain}
-.theory-meme-picture>span{display:flex;align-items:center;gap:4px;position:absolute;right:5px;bottom:5px;border-radius:20px;padding:4px 7px;font-size:10px;background:#141815e8;color:#d3f592}
-.theory-meme-picture>span svg{width:13px;height:13px}
 .theory-library{min-width:0}.theory-library-head{margin:0 0 14px;align-items:center}.theory-library-head h2{font-size:20px}.theory-library-head .tiny-note{margin-top:5px;letter-spacing:0}
 #theory-count{flex-shrink:0;text-align:right;font-size:11px}
 .theory-searchbar{margin-bottom:10px}.theory-searchbar input{font-size:14px}
@@ -255,9 +242,6 @@
 .theory-gallery-nav .btn{min-height:48px;min-width:0;padding:10px 12px;font-size:12px}
 .theory-gallery-nav>span{font:11px var(--mono);color:var(--muted);white-space:nowrap}
 @media(max-width:760px){
- .theory-intro{padding:9px 12px;margin-bottom:12px;gap:12px}.theory-intro p{font-size:12px;margin-top:3px}
- .theory-meme-card{grid-template-columns:minmax(0,1fr) 122px;gap:15px;padding:15px 16px;margin-bottom:22px}.theory-meme-copy h2{font-size:21px;margin:5px 0}.theory-meme-copy .eyebrow{font-size:7px;letter-spacing:.5px}.theory-meme-copy p{font-size:11px}.theory-meme-copy small{font-size:9px;margin-top:6px}
- .theory-meme-picture{border-radius:10px;min-height:88px}.theory-meme-picture img{min-height:88px}
  .theory-library-head h2{font-size:19px}.theory-library-head .tiny-note{font-size:9px}#theory-count{font-size:10px}
  .theory-author-filters .filter{flex:1;min-width:0;padding:10px 8px;font-size:12px}
  .theory-topic-filters .filter{padding:10px 12px;font-size:11px}
@@ -265,14 +249,8 @@
  .theory-lightbox{max-height:55dvh}.theory-lightbox~.modal-actions{flex-wrap:wrap}
 }
 @media(max-width:360px){
- .theory-meme-card{grid-template-columns:minmax(0,1fr) 104px;padding:14px;gap:12px}.theory-meme-copy h2{font-size:19px}.theory-meme-copy .eyebrow{display:none}
  .theory-gallery-nav{gap:7px}.theory-gallery-nav .btn{font-size:11px;padding:10px 8px}
 }
-
-.theory-source-summary{font-size:12px;line-height:1.85;color:var(--muted);padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin:14px 0}
-.theory-source-summary>span{display:inline-block;color:var(--ink);font-size:10px;margin-right:7px}
-.theory-card-body .theory-source-summary{font-size:12px;margin:12px 0}
-.theory-card-body .theory-source-summary>span{color:var(--ink)}
 
 /* Software update UI is independent of training and photo storage. */
 .settings-button{position:relative}.update-badge{position:absolute;right:8px;top:7px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--panel)}
@@ -289,3 +267,18 @@
 @media(max-width:760px){.update-actions .btn{flex:1;min-width:110px;font-size:12px}.update-auto-row{gap:12px}.software-update .panel-title h3{font-size:17px}.software-update .chip{font-size:10px}.update-version strong{font-size:19px}}
 
 .update-notes p{max-height:220px;overflow:auto;overscroll-behavior:contain;padding-right:4px}
+
+/* Source quotes and a single static manga masthead. */
+.quote-hero{min-height:240px;padding:28px 30px;display:block}
+.quote-hero .hero-copy{width:100%}
+.quote-hero blockquote{font-size:clamp(27px,3.2vw,42px);line-height:1.5;font-weight:800;letter-spacing:-.5px;white-space:pre-line;margin:12px 0;max-width:none}
+.quote-hero h2{font-size:32px;margin:16px 0}
+.quote-attribution{display:flex;align-items:center;gap:8px;min-height:44px;max-width:100%;padding:6px 0;background:none;border:0;color:inherit;font-size:12px;text-align:left;cursor:pointer}
+.quote-attribution .icon{width:17px;flex-shrink:0}
+.quote-hero .hero-cta{margin-top:12px}
+.theory-masthead{margin:0 0 24px;overflow:hidden;border-radius:18px;background:#fff}
+.theory-masthead>img{display:block;width:100%;height:auto;max-height:440px;object-fit:contain}
+.theory-card-body blockquote{font-size:19px;font-weight:650;line-height:1.65;white-space:pre-line;margin:8px 0 14px;overflow-wrap:anywhere}
+.media-note{display:block;font-size:11px;color:var(--muted);margin:10px 0}
+@media(max-width:760px){.quote-hero{min-height:220px;padding:24px}.quote-hero blockquote{font-size:28px}.theory-masthead{border-radius:12px;margin-bottom:22px}.theory-card-body blockquote{font-size:18px}}
+@media(max-width:360px){.quote-hero{padding:20px}.quote-hero blockquote{font-size:24px}.quote-attribution{font-size:11px}}

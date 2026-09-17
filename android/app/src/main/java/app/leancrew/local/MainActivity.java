@@ -183,7 +183,7 @@ public final class MainActivity extends Activity {
                 try { startActivityForResult(intent, REQUEST_IMPORT); }
                 catch (ActivityNotFoundException | SecurityException error) {
                     completeFileChoice(null);
-                    notifyWeb("设备没有可用的文件选择器。");
+                    notifyWeb("无法打开文件选择器。");
                 }
                 return true;
             }
@@ -365,7 +365,7 @@ public final class MainActivity extends Activity {
                 try { startActivityForResult(intent, REQUEST_EXPORT); }
                 catch (ActivityNotFoundException | SecurityException error) {
                     synchronized (exportLock) { pendingExport = null; }
-                    notifyWeb("设备没有可用的文档保存器。");
+                    notifyWeb("无法打开文件保存器。");
                 }
             });
             return true;
@@ -398,7 +398,7 @@ public final class MainActivity extends Activity {
             boolean valid = result == RESULT_OK && photo != null && photo.length() > 0 && photo.length() <= MAX_PHOTO_BYTES;
             if (fileCallback == null) {
                 discardCapture();
-                notifyWeb("应用已重新载入，请再拍一张或选择照片。");
+                notifyWeb("应用已重载，请重新拍照或选择照片。");
             } else if (valid) {
                 Uri photoUri = pendingCapture;
                 pendingCapture = null;
@@ -422,8 +422,8 @@ public final class MainActivity extends Activity {
                     if (output == null) throw new IOException("No writable stream");
                     output.write(content.getBytes(StandardCharsets.UTF_8));
                     output.flush();
-                    notifyWeb("备份已保存到你选择的位置。");
-                } catch (Exception error) { notifyWeb("备份写入失败；请换一个保存位置重试。"); }
+                    notifyWeb("备份已保存。");
+                } catch (Exception error) { notifyWeb("备份保存失败，请更换保存位置。"); }
             }, "lean-export").start();
         }
     }

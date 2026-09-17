@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "packageName": "app.leancrew.local",
-  "versionName": "1.5.1",
-  "versionCode": 8,
+  "versionName": "1.5.2",
+  "versionCode": 9,
   "minSdk": 26,
-  "apkUrl": "https://github.com/Qinzi27/jibo/releases/download/v1.5.1/jibo-v1.5.1.apk",
-  "sha256": "46da6c48e8c2200fa07994eead9e9881662701a9831b243832f60fd239c32c35",
-  "size": 3195489,
-  "notes": "安全加固：阻止恶意备份保存地址覆盖本地文件；加强多窗口记录与损坏数据保护；及时清理拍照临时原图；更新只调用系统安装器。照片、计划与记录仍全部保存在本机。"
+  "apkUrl": "https://github.com/Qinzi27/jibo/releases/download/v1.5.2/jibo-v1.5.2.apk",
+  "sha256": "41eb903c791cab90cdadc10003349beffc6930e67aac70c151a7e72f69a2c0ca",
+  "size": 3187297,
+  "notes": "删除自拟励志文案、摘要和旁白，改为简短操作说明与邵艾伦、孙宇晨的原帖短引文。漫画仅保留为肌薄理论页头图。"
 }

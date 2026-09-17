@@ -70,6 +70,7 @@ const nav=async(p,name)=>{
   if(name==='plans'||name==='progress')await click(p,'plan-view',`[data-view="${name}"]`);
 };
 const close=async p=>{if(await p.locator('#modal').isVisible())await click(p,'close-modal');};
+const photoReady=(p,previous='')=>p.waitForFunction(previous=>{const image=document.querySelector('#custom-photo-preview img'),save=document.querySelector('#save-custom-exercise');return image?.complete&&image.naturalWidth>0&&save&&!save.disabled&&(!previous||image.getAttribute('src')!==previous);},previous);
 function hook(p) {p.on('pageerror',e=>errors.push(String(e)));p.on('request',r=>{if(!r.url().startsWith(origin)&&!r.url().startsWith('data:')&&!r.url().startsWith('blob:'))external.push(r.url());});p.on('requestfailed',r=>{if(r.url().startsWith('https://example.invalid/'))blockedExternal.push({url:r.url(),error:r.failure()?.errorText})});p.on('response',r=>{if(r.url().startsWith('https://example.invalid/'))externalResponses.push(r.url())});}
 let origin;
 async function load(initial=null,width=390){
@@ -136,6 +137,7 @@ async function main(){
   await click(p,'settings');await p.locator('#nickname').fill('<img src=x onerror=alert(1)>');await p.locator('#profile-form button').click();await click(p,'theme','[data-theme="blond"]');
   check('theme persists and is applied',(await state(p)).profile.theme==='blond'&&await p.locator('body').evaluate(e=>e.classList.contains('blond')));
   const originalFun=(await state(p)).profile.fun;await click(p,'toggle-fun');check('cosmetic fun preference toggles',(await state(p)).profile.fun===!originalFun);
+  await nav(p,'home');check('home quotation follows the saved display preference while training stays available',await p.locator('#quote').count()===((await state(p)).profile.fun?1:0)&&await p.locator('.hero-cta').isVisible());await click(p,'settings');
   await downloads(p);await click(p,'export-json');const backup=await p.evaluate(async()=>await window.__testDownloads[0].text());
   check('JSON export preserves the complete model',JSON.stringify(JSON.parse(backup))===JSON.stringify(await state(p)));
   await click(p,'export-csv');const csv=await p.evaluate(async()=>await window.__testDownloads[1].text());check('CSV includes load convention and archived records',csv.includes('load_convention')&&csv.includes('器械推胸'));
@@ -228,7 +230,7 @@ async function securityChecks(){
   p=await load();await nav(p,'library');await click(p,'new-custom-exercise');
   await p.evaluate(()=>{window.__releasedPhotos=[];window.LeanNative={releasePhotoSelection:name=>window.__releasedPhotos.push(name)}});
   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6XmAAAAAASUVORK5CYII=','base64');
-  await p.locator('#exercise-gallery').setInputFiles({name:'capture-success.png',mimeType:'image/png',buffer:png});await p.locator('#photo-status').filter({hasText:'照片已就绪'}).waitFor();
+  await p.locator('#exercise-gallery').setInputFiles({name:'capture-success.png',mimeType:'image/png',buffer:png});await photoReady(p);
   check('successful photo processing releases only that native temporary filename',JSON.stringify(await p.evaluate(()=>window.__releasedPhotos))==='["capture-success.png"]');
   await p.locator('#exercise-gallery').setInputFiles({name:'capture-failed.png',mimeType:'image/png',buffer:Buffer.from('invalid raster')});await p.waitForFunction(()=>window.__releasedPhotos.includes('capture-failed.png'));
   check('failed photo decoding also releases native temporary capture',await p.locator('#photo-status').innerText().then(t=>t.includes('无法读取')));
@@ -288,7 +290,7 @@ async function updateChecks(){
   await p.evaluate(store=>{const s=JSON.parse(localStorage.getItem(store)),canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;canvas.getContext('2d').fillRect(0,0,8,8);s.customExercises[0].image=canvas.toDataURL('image/png');localStorage.setItem(store,JSON.stringify(s));},store);await p.reload();
   const before=await saved(p);
   await click(p,'settings');
-  check('web update card gives an honest fixed GitHub release fallback without a fake check action',await p.locator('#software-update a').getAttribute('href')==='https://github.com/Qinzi27/jibo/releases'&&await p.locator('[data-action="update-check"]').count()===0&&await p.locator('#software-update').innerText().then(t=>t.includes('网页不会模拟版本检查')));
+  check('web update card gives an honest fixed GitHub release fallback without a fake check action',await p.locator('#software-update a').getAttribute('href')==='https://github.com/Qinzi27/jibo/releases'&&await p.locator('[data-action="update-check"]').count()===0&&await p.locator('#software-update').innerText().then(t=>t.includes('安卓安装包')));
   await p.evaluate(()=>{window.__copiedUpdateLink='';Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>window.__copiedUpdateLink=text});});
   await click(p,'update-copy-link');
   check('web fallback copies only the fixed public releases URL',await p.evaluate(()=>window.__copiedUpdateLink==='https://github.com/Qinzi27/jibo/releases')&&await saved(p)===before);
@@ -350,18 +352,27 @@ async function updateChecks(){
 }
 async function theoryChecks(){
   const {p,before}=await planProgressChecks();
-  await nav(p,'theory');
   const posts=await p.evaluate(()=>JIBO_THEORY_POSTS);
+  await nav(p,'home');await click(p,'workout-overview');
+  const featuredId=await p.locator('.quote-attribution').getAttribute('data-id'),featured=posts.find(post=>post.id===featuredId);
+  check('home quotation is an attributed Alan source excerpt with its exact citation',featured?.authorId==='alan'&&await p.locator('#quote').innerText()===featured.excerpt&&await p.locator('#quote').getAttribute('cite')===featured.sourceUrl&&await p.locator('.quote-attribution').innerText().then(t=>t.includes(featured.author)&&t.includes(featured.handle)));
+  await p.screenshot({path:path.join(output,'quoted-home-mobile.png')});
+  await p.locator('.quote-attribution').click();await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
+  check('home attribution opens the matching bundled source without changing personal records',await p.locator('.theory-source-url').innerText()===featured.sourceUrl&&await p.locator('.theory-lightbox img').evaluate(i=>i.complete&&i.naturalWidth>0)&&await saved(p)===before);await close(p);
+  await nav(p,'theory');
   const brand=p.locator('.brand-icon img');await brand.evaluate(i=>i.decode());
   check('header shows the packaged blond avatar rather than the retired SVG logo',await brand.evaluate(i=>i.complete&&i.naturalWidth===512)&&await p.locator('link[rel="icon"]').getAttribute('type')==='image/png'&&await p.locator('link[rel="icon"]').getAttribute('href').then(src=>src.startsWith('data:image/png;')));
-  check('theory includes attributed local screenshot cards from both selected authors',posts.length>=2&&new Set(posts.map(post=>post.id)).size===posts.length&&['sun','alan'].every(author=>posts.some(post=>post.authorId===author))&&posts.every(post=>post.author&&post.handle&&post.date&&post.title&&post.commentary&&/^https:\/\/x\.com\/[^/]+\/status\/\d+$/.test(post.sourceUrl)));
+  check('theory includes attributed local screenshot cards from both selected authors',posts.length>=2&&new Set(posts.map(post=>post.id)).size===posts.length&&['sun','alan'].every(author=>posts.some(post=>post.authorId===author))&&posts.every(post=>post.author&&post.handle&&post.date&&post.title&&post.excerpt&&/^https:\/\/x\.com\/[^/]+\/status\/\d+$/.test(post.sourceUrl)));
   check('theory cards expose all bundled posts without an account or network frame',await p.locator('.theory-card').count()===posts.length&&await p.locator('iframe').count()===0&&await p.locator('.theory-card[data-post-id]').evaluateAll(es=>es.map(e=>e.dataset.postId)).then(ids=>posts.every(post=>ids.includes(post.id))));
+  const citations=await p.locator('.theory-card').evaluateAll(cards=>cards.map(card=>({id:card.dataset.postId,quote:card.querySelector('blockquote')?.textContent,cite:card.querySelector('blockquote')?.getAttribute('cite'),sourceAction:card.querySelector('[data-action="theory-source"]')?.dataset.id})));
+  check('each theory quotation preserves its source text, citation and original-link action',citations.length===posts.length&&citations.every(card=>posts.some(post=>post.id===card.id&&card.quote===post.excerpt&&card.cite===post.sourceUrl&&card.sourceAction===post.id)));
   await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
   check('every theory screenshot decodes from a packaged local image',await p.locator('.theory-card img').evaluateAll(imgs=>imgs.length>0&&imgs.every(i=>i.complete&&i.naturalWidth>0&&i.naturalHeight>0&&!/^https?:\/\/(?!127\.0\.0\.1:)/.test(i.src))));
   await p.screenshot({path:path.join(output,'theory-mobile.png')});
   await p.screenshot({path:path.join(output,'theory-mobile-full.png'),fullPage:true});
-  const meme=p.locator('.theory-meme-card img');await meme.evaluate(i=>i.decode());
-  check('meme is a separate local comic and is excluded from attributed post counts',await p.locator('.theory-meme-card').count()===1&&await meme.evaluate(i=>i.complete&&i.naturalWidth>0)&&await p.locator('#theory-count').innerText()===`${posts.length} / ${posts.length} 条原帖`&&await p.locator('.theory-meme-card .theory-card').count()===0);
+  const meme=p.locator('.theory-masthead > img');await meme.evaluate(i=>i.decode());
+  const memeSource=await meme.getAttribute('src');
+  check('comic appears once as a static image-only masthead outside attributed post counts',await p.locator('.theory-masthead').count()===1&&await meme.evaluate(i=>i.complete&&i.naturalWidth>0&&i.parentElement.children.length===1&&!i.parentElement.textContent.trim()&&!i.closest('button,a,[data-action]'))&&await p.locator('img').evaluateAll((imgs,src)=>imgs.filter(i=>i.getAttribute('src')===src).length,memeSource)===1&&await p.locator('#theory-count').innerText()===`${posts.length} / ${posts.length} 条原帖`&&await p.locator('.theory-masthead .theory-card').count()===0);
   for(const author of ['sun','alan']){
     await click(p,'theory-filter',`[data-author="${author}"]`);
     const ids=await p.locator('.theory-card').evaluateAll(es=>es.map(e=>e.dataset.postId));
@@ -373,22 +384,19 @@ async function theoryChecks(){
     await click(p,'theory-category',`[data-category="${category}"]`);
     const expected=posts.filter(post=>(post.category||'theory')===category).map(post=>post.id);
     const shown=await p.locator('.theory-card').evaluateAll(es=>es.map(e=>e.dataset.postId));
-    check(`${category} category lists exactly its original posts without hiding the independent comic`,JSON.stringify(shown)===JSON.stringify(expected)&&await p.locator('.theory-meme-card').isVisible()&&await p.locator('#theory-count').innerText()===`${expected.length} / ${posts.length} 条原帖`);
+    check(`${category} category lists exactly its original posts without hiding the masthead`,JSON.stringify(shown)===JSON.stringify(expected)&&await p.locator('.theory-masthead').isVisible()&&await p.locator('#theory-count').innerText()===`${expected.length} / ${posts.length} 条原帖`);
     if(category==='training'){await p.locator('.theory-library-head').scrollIntoViewIfNeeded();await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});await p.screenshot({path:path.join(output,'theory-filtered-mobile.png')});}
   }
   await click(p,'theory-category','[data-category="all"]');
   await p.locator('#theory-search').pressSequentially(posts.find(post=>post.authorId==='sun').handle);
   check('typing an author keyword filters live without stealing keyboard focus',await p.locator('.theory-card').count()===posts.filter(post=>post.authorId==='sun').length&&await p.locator('.theory-card').evaluateAll(es=>es.every(e=>e.querySelector('strong').textContent==='孙宇晨'))&&await p.locator('#theory-search').evaluate(e=>e===document.activeElement));
   await click(p,'theory-filter','[data-author="alan"]');
-  check('author and keyword filters combine and show a clear empty state',await p.locator('.theory-card').count()===0&&await p.locator('.theory-empty').isVisible()&&await p.locator('.theory-meme-card').isVisible());
+  check('author and keyword filters combine and show a clear empty state',await p.locator('.theory-card').count()===0&&await p.locator('.theory-empty').isVisible()&&await p.locator('.theory-masthead').isVisible());
   await click(p,'theory-clear');
   check('clearing search restores all authors and topics without touching personal data',await p.locator('.theory-card').count()===posts.length&&await p.locator('#theory-search').inputValue()===''&&await p.locator('[data-action="theory-filter"][data-author="all"]').getAttribute('aria-pressed')==='true'&&await p.locator('[data-action="theory-category"][data-category="all"]').getAttribute('aria-pressed')==='true'&&await saved(p)===before);
-  const aside=await p.locator('#theory-aside-text').innerText();await click(p,'theory-shuffle');
-  check('changing app commentary leaves all attributed source screenshots intact',await p.locator('#theory-aside-text').innerText()!==aside&&await p.locator('.theory-card').count()===posts.length);
   await p.evaluate(()=>{window.__copiedTheorySources=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>window.__copiedTheorySources.push(text)});});
   await context.setOffline(true);
-  await click(p,'theory-meme');await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
-  check('offline comic enlargement is independent of X sources and author filters',await p.locator('.theory-lightbox img').getAttribute('src')===await meme.getAttribute('src')&&await p.locator('#modal [data-action="theory-source"]').count()===0&&await p.locator('#modal').innerText().then(text=>text.includes('不是孙宇晨或邵艾伦的推文')));await p.screenshot({path:path.join(output,'theory-comic-enlarged-mobile.png')});await close(p);
+  await meme.click();check('offline masthead stays a header image without opening a separate gallery',await p.locator('#modal').isHidden()&&await meme.getAttribute('src')===memeSource&&await saved(p)===before);
   const pagesBefore=context.pages().length,urlBefore=p.url();
   for(const post of [posts.find(x=>x.authorId==='sun'),posts.find(x=>x.authorId==='alan')]){
     await click(p,'theory-image',`[data-id="${post.id}"]`);
@@ -427,7 +435,7 @@ async function theoryChecks(){
   for(const width of [320,390,430,1280]){
     await p.setViewportSize({width,height:844});
     check(`${width}px theory cards and author controls fit the viewport`,await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)&&await p.locator('.theory-card').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})));
-    check(`${width}px theory search and independent comic stay within the viewport`,await p.locator('#theory-search,.theory-meme-card').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;})));
+    check(`${width}px theory search and masthead stay within the viewport`,await p.locator('#theory-search,.theory-masthead').evaluateAll(es=>es.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;})));
     await p.locator('[data-action="theory-category"]').last().scrollIntoViewIfNeeded();
     check(`${width}px horizontal topic list keeps every chip reachable within its own scroll area`,await p.locator('.theory-topic-filters').evaluate(e=>{const r=e.getBoundingClientRect(),last=e.lastElementChild.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&getComputedStyle(e).overflowX==='auto'&&last.left>=r.left&&last.right<=r.right+1;})&&await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     if(width===1280){await p.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await p.screenshot({path:path.join(output,'theory-desktop-full.png'),fullPage:true});}
@@ -456,7 +464,7 @@ async function customChecks(){
   const [galleryChooser]=await Promise.all([p.waitForEvent('filechooser'),click(p,'choose-exercise-photo')]);
   check('phone image button opens the single-image gallery file chooser',await galleryChooser.element().getAttribute('id')==='exercise-gallery'&&!galleryChooser.isMultiple());
   await galleryChooser.setFiles(sourcePhoto);
-  await p.locator('#photo-status').filter({hasText:'照片已就绪'}).waitFor();await p.locator('#save-custom-exercise').click();
+  await photoReady(p);await p.locator('#save-custom-exercise').click();
   let st=await state(p);const ex=st.customExercises[0];
   check('named custom movement and selected photo save locally',st.schemaVersion===2&&st.customExercises.length===1&&ex.name==='我的肩背<img src=x onerror=alert(1)>'&&ex.group==='肩部'&&ex.image.startsWith('data:image/jpeg;base64,'));
   check('custom movement names render markup as harmless text',await p.locator('.exercise-card h3').first().innerText()===ex.name&&await p.locator('img[src="x"]').count()===0);
@@ -469,7 +477,7 @@ async function customChecks(){
   const [emptyChooser]=await Promise.all([p.waitForEvent('filechooser'),click(p,'choose-exercise-photo')]);await emptyChooser.setFiles([]);
   check('an empty browser picker result preserves the current photo and saved data',await p.locator('#custom-photo-preview img').getAttribute('src')===ex.image&&await saved(p)===beforeCancelledEditor);
   const replacementPng=await p.evaluate(()=>{const c=document.createElement('canvas');c.width=200;c.height=200;const x=c.getContext('2d');x.fillStyle='#ff7566';x.fillRect(0,0,200,200);return c.toDataURL('image/png').split(',')[1];});
-  await p.locator('#custom-exercise-name').fill('尚未保存的新名字');await p.locator('#exercise-gallery').setInputFiles({name:'unsaved-photo.png',mimeType:'image/png',buffer:Buffer.from(replacementPng,'base64')});await p.locator('#photo-status').filter({hasText:'照片已就绪'}).waitFor();
+  await p.locator('#custom-exercise-name').fill('尚未保存的新名字');await p.locator('#exercise-gallery').setInputFiles({name:'unsaved-photo.png',mimeType:'image/png',buffer:Buffer.from(replacementPng,'base64')});await photoReady(p,ex.image);
   assert.notEqual(await p.locator('#custom-photo-preview img').getAttribute('src'),ex.image,'replacement fixture produces a different preview');await click(p,'close-modal');
   await click(p,'detail',`[data-ex="${ex.id}"]`);await click(p,'edit-custom-exercise');
   check('cancelling photo and name edits restores the saved movement unchanged',await saved(p)===beforeCancelledEditor&&await p.locator('#custom-photo-preview img').getAttribute('src')===ex.image&&await p.locator('#custom-exercise-name').inputValue()===ex.name);await click(p,'close-modal');
@@ -482,7 +490,7 @@ async function customChecks(){
   await p.locator('#exercise-gallery').setInputFiles({name:'delayed-test-photo.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await click(p,'remove-exercise-photo');await p.waitForTimeout(1200);await p.evaluate(()=>{Image.prototype.decode=window.__jiboOriginalDecode;delete window.__jiboOriginalDecode;});
   check('removing a photo prevents late decoding from restoring it',await p.locator('#custom-photo-preview img').count()===0&&await p.locator('#save-custom-exercise').isEnabled());await p.locator('#save-custom-exercise').click();
   check('removed movement photo is omitted from saved data',(await state(p)).customExercises[0].image==='');
-  await click(p,'detail',`[data-ex="${ex.id}"]`);await click(p,'edit-custom-exercise');await p.locator('#exercise-gallery').setInputFiles({name:'restored-test-photo.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await p.locator('#photo-status').filter({hasText:'照片已就绪'}).waitFor();await p.locator('#save-custom-exercise').click();
+  await click(p,'detail',`[data-ex="${ex.id}"]`);await click(p,'edit-custom-exercise');await p.locator('#exercise-gallery').setInputFiles({name:'restored-test-photo.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await photoReady(p);await p.locator('#save-custom-exercise').click();
   check('a removed photo can be replaced by a fresh local selection',(await state(p)).customExercises[0].image===ex.image);
   await nav(p,'plans');await click(p,'new-custom-plan');await p.locator('#custom-plan-name').fill('我的肩背计划');await p.locator('#custom-plan-description').fill('每周按节奏安排，先练动作。');await p.locator('#custom-plan-duration').fill('35');
   await p.locator('#custom-plan-add-ex').selectOption(ex.id);await click(p,'plan-step-add');await p.locator('[data-plan-field="sets"]').first().fill('3');await p.locator('[data-plan-field="target"]').first().fill('10–12 次');await p.locator('[data-plan-field="restSeconds"]').first().fill('75');
@@ -609,7 +617,8 @@ async function pwaChecks(){
   response=await p.reload({waitUntil:'load'});
   check('offline reload is served by service worker with HTTP cache disabled',response.fromServiceWorker()&&response.status()===200);
   check('offline home renders brand and weekly training overview',await p.locator('.brand strong').innerText()==='肌薄'&&await p.locator('.week-value').isVisible());
-  await p.locator('.hero-mark').evaluate(i=>i.decode());check('offline home illustration decodes',await p.locator('.hero-mark').evaluate(i=>i.complete&&i.naturalWidth>0));
+  const featuredSource=await p.locator('#quote').getAttribute('cite');await p.locator('.quote-attribution').click();await p.locator('.theory-lightbox img').evaluate(i=>i.decode());
+  check('offline home citation opens its matching packaged source screenshot',await p.locator('.theory-source-url').innerText()===featuredSource&&await p.locator('.theory-lightbox img').evaluate(i=>i.complete&&i.naturalWidth>0));await close(p);
   check('offline app scripts, plans and theory load from service-worker cache',['app.js','core.js','exercises.js','plans.js','theory.js','styles.css'].every(file=>offlineResponses.some(r=>r.url===origin+'/'+file&&r.fromServiceWorker&&r.status===200)));
   await p.screenshot({path:path.join(output,'offline-home.png')});
   await nav(p,'plans');check('offline plans remain interactive',await p.locator('.plan-card').count()===3);await click(p,'plan-detail','[data-plan="gym-a"]');await click(p,'start-plan','[data-plan="gym-a"]');
@@ -621,10 +630,10 @@ async function pwaChecks(){
   await nav(p,'theory');
   const theoryPosts=await p.evaluate(()=>JIBO_THEORY_POSTS);
   const theoryImages=[...new Set(theoryPosts.flatMap(post=>post.images?.length?post.images:[post.image])),'assets/theory/muscle-meme.png'];
-  check('all theory screenshots, long-post pages and independent comic are explicitly precached',theoryPosts.length>0&&theoryImages.every(image=>cache.urls.includes(new URL(image,origin+'/').href)));
+  check('all theory screenshots, long-post pages and masthead image are explicitly precached',theoryPosts.length>0&&theoryImages.every(image=>cache.urls.includes(new URL(image,origin+'/').href)));
   await p.locator('.theory-card img').evaluateAll(async imgs=>{imgs.forEach(i=>i.loading='eager');await Promise.all(imgs.map(i=>i.decode()));});
   const decoded=await p.evaluate(async paths=>Promise.all(paths.map(async path=>{const image=new Image();image.src=path;await image.decode();return image.naturalWidth>0;})),theoryImages);
-  check('every theory screenshot, gallery page and comic decodes offline using the service-worker cache',await p.locator('.theory-card img').count()===theoryPosts.length&&decoded.every(Boolean)&&theoryImages.every(image=>offlineResponses.some(r=>r.url===new URL(image,origin+'/').href&&r.fromServiceWorker&&r.status===200)));
+  check('every theory screenshot, gallery page and masthead decodes offline using the service-worker cache',await p.locator('.theory-card img').count()===theoryPosts.length&&await p.locator('.theory-masthead > img').evaluate(i=>i.complete&&i.naturalWidth>0)&&decoded.every(Boolean)&&theoryImages.every(image=>offlineResponses.some(r=>r.url===new URL(image,origin+'/').href&&r.fromServiceWorker&&r.status===200)));
   await p.screenshot({path:path.join(output,'offline-theory.png')});
   await context.close();await launch();await context.setOffline(true);p=await context.newPage();hook(p);response=await p.goto(origin+'/index.html',{waitUntil:'load'});
   check('independent browser restart can open source app while offline',response.fromServiceWorker()&&await p.locator('.brand strong').innerText()==='肌薄');
